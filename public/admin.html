@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Panel</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #111;
+      color: #fff;
+      padding: 24px;
+    }
+
+    h2 { margin-top: 0; }
+
+    .card {
+      background: #1c1c1c;
+      padding: 18px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+      max-width: 420px;
+    }
+
+    input {
+      padding: 6px 8px;
+      font-size: 14px;
+      width: 90px;
+      margin-left: 8px;
+    }
+
+    button {
+      padding: 8px 14px;
+      font-size: 14px;
+      margin-top: 10px;
+      cursor: pointer;
+      border-radius: 5px;
+      border: none;
+      background: #2d7dff;
+      color: white;
+    }
+
+    button:hover { background: #1e5fd1; }
+
+    .status {
+      margin-left: 10px;
+      opacity: 0.85;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>Office Signage Admin</h2>
+
+<div class="card">
+  <strong>Image interval</strong><br><br>
+
+  <label>
+    Change every:
+    <input id="intervalSec" type="number" min="1" max="600" step="1">
+    seconds
+  </label>
+  <br>
+
+  <button id="saveInterval">Save interval</button>
+  <span id="status" class="status"></span>
+</div>
+
+<div class="card">
+  <strong>Screens</strong><br><br>
+  <button id="reloadBtn">Reload all screens</button>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  const socket = io();
+  const intervalInput = document.getElementById("intervalSec");
+  const status = document.getElementById("status");
+
+  async function loadSettings() {
+    try {
+      const res = await fetch("/api/settings", { cache: "no-store" });
+      const s = await res.json();
+
+      const seconds = Math.round((s.imageIntervalMs || 7000) / 1000);
+      intervalInput.value = seconds;
+    } catch (e) {
+      status.textContent = "⚠️ Could not load settings";
+    }
+  }
+
+  document.getElementById("saveInterval").onclick = async () => {
+    const seconds = Number(intervalInput.value);
+
+    if (!seconds || seconds < 1) {
+      status.textContent = "❌ Invalid number";
+      return;
+    }
+
+    status.textContent = "Saving...";
+
+    try {
+      const res = await fetch("/api/settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          imageIntervalMs: Math.floor(seconds * 1000)
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        status.textContent = "❌ " + (err.error || "Failed");
+        return;
+      }
+
+      status.textContent = "✅ Saved — screens syncing";
+    } catch (e) {
+      status.textContent = "❌ Network error";
+    }
+  };
+
+  document.getElementById("reloadBtn").onclick = () => {
+    socket.emit("reload");
+    status.textContent = "🔁 Reload sent";
+  };
+
+  loadSettings();
+</script>
+
+</body>
+</html>

@@ -1,0 +1,11 @@
+services:
+  signage:
+    build: .
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    volumes:
+      - ./public/media:/app/public/media
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - CHOKIDAR_INTERVAL=500

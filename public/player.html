@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Office Display</title>
+  <style>
+    body { margin: 0; background: black; overflow: hidden; }
+    #stage { width: 100vw; height: 100vh; }
+    img, video { width: 100vw; height: 100vh; object-fit: contain; }
+    .empty {
+      color: #fff; font-family: Arial, sans-serif;
+      display:flex; align-items:center; justify-content:center;
+      height:100vh; opacity:0.9;
+    }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const stage = document.getElementById("stage");
+
+    let playlist = [];
+    let syncState = null;
+
+    let currentIndex = 0;
+    let nextTimer = null;
+
+    async function fetchPlaylist() {
+      const res = await fetch("/api/playlist", { cache: "no-store" });
+      playlist = await res.json();
+      return playlist;
+    }
+
+    async function fetchSync() {
+      const res = await fetch("/api/sync", { cache: "no-store" });
+      syncState = await res.json();
+      return syncState;
+    }
+
+    function clearTimers() {
+      if (nextTimer) clearTimeout(nextTimer);
+      nextTimer = null;
+    }
+
+    function showEmpty() {
+      clearTimers();
+      stage.innerHTML = `<div class="empty">No media found in <b style="margin-left:6px;">/public/media</b></div>`;
+    }
+
+    // Calculate which image slot we should be on based on server startedAt
+    // Only images have durations; videos are treated as duration=0 for indexing
+    function buildTimeline() {
+      // Convert playlist into "slots" with duration
+      // Videos: duration 0 (they won't advance via time; they'll advance onended)
+      return playlist.map(item => ({
+        ...item,
+        ms: item.type === "image" ? (item.duration || 7000) : 0
+      }));
+    }
+
+    function computeIndexAndRemainder(timeline, elapsedMs) {
+      // If all slots are 0ms (e.g. only videos), just start at 0.
+      const totalMs = timeline.reduce((sum, x) => sum + (x.ms || 0), 0);
+      if (totalMs <= 0) return { index: 0, remainingMs: null };
+
+      let t = elapsedMs % totalMs;
+
+      for (let i = 0; i < timeline.length; i++) {
+        const dur = timeline[i].ms || 0;
+        if (dur === 0) continue; // skip videos in time calc
+        if (t < dur) return { index: i, remainingMs: dur - t };
+        t -= dur;
+      }
+
+      // Fallback
+      return { index: 0, remainingMs: timeline[0]?.ms || 7000 };
+    }
+
+    function renderItem(item) {
+      stage.innerHTML = "";
+
+      if (item.type === "image") {
+        const img = document.createElement("img");
+        img.src = item.src;
+        stage.appendChild(img);
+        return { kind: "image" };
+      }
+
+      if (item.type === "video") {
+        const video = document.createElement("video");
+        video.src = item.src;
+        video.autoplay = true;
+        video.muted = true;
+        video.playsInline = true;
+        // Optional: helps some browsers start quicker
+        video.preload = "auto";
+        stage.appendChild(video);
+        return { kind: "video", node: video };
+      }
+
+      return { kind: "unknown" };
+    }
+
+    function playFromSync() {
+      clearTimers();
+
+      if (!Array.isArray(playlist) || playlist.length === 0) return showEmpty();
+      if (!syncState || !syncState.startedAt) {
+        // If sync missing, just do a simple local start
+        currentIndex = 0;
+        playItemLocal(currentIndex);
+        return;
+      }
+
+      const timeline = buildTimeline();
+      const elapsed = Date.now() - syncState.startedAt;
+
+      const { index, remainingMs } = computeIndexAndRemainder(timeline, Math.max(0, elapsed));
+      currentIndex = index;
+
+      const item = timeline[currentIndex];
+      const rendered = renderItem(item);
+
+      if (rendered.kind === "image") {
+        // schedule next change exactly on the boundary
+        nextTimer = setTimeout(() => {
+          // advance to next non-zero slot (image) first, or just next item if you want
+          playFromSync();
+        }, remainingMs || (item.duration || 7000));
+      } else if (rendered.kind === "video") {
+        // videos run to end; after it ends, realign to sync (prevents drift)
+        rendered.node.onended = () => playFromSync();
+        rendered.node.onerror = () => playFromSync();
+      } else {
+        showEmpty();
+      }
+    }
+
+    function playItemLocal(i) {
+      clearTimers();
+      if (!playlist.length) return showEmpty();
+
+      const item = playlist[i];
+      const rendered = renderItem(item);
+
+      if (rendered.kind === "image") {
+        nextTimer = setTimeout(() => {
+          currentIndex = (currentIndex + 1) % playlist.length;
+          playItemLocal(currentIndex);
+        }, item.duration || 7000);
+      } else if (rendered.kind === "video") {
+        rendered.node.onended = () => {
+          currentIndex = (currentIndex + 1) % playlist.length;
+          playItemLocal(currentIndex);
+        };
+        rendered.node.onerror = () => {
+          currentIndex = (currentIndex + 1) % playlist.length;
+          playItemLocal(currentIndex);
+        };
+      } else {
+        showEmpty();
+      }
+    }
+
+    async function init() {
+      await Promise.all([fetchPlaylist(), fetchSync()]);
+      playFromSync();
+    }
+
+    // When media changes, server triggers reload; we refetch everything and re-sync
+    socket.on("reload", async () => {
+      await Promise.all([fetchPlaylist(), fetchSync()]);
+      playFromSync();
+    });
+
+    // Heartbeat sync: if we drift, this pulls us back in line
+    socket.on("sync", (state) => {
+      syncState = state;
+      // Light-touch re-align: only re-sync if we're out by more than ~500ms on image boundaries
+      // (Simpler: just call playFromSync() every time, but that can feel "snappy")
+      // We'll do the simple reliable approach:
+      playFromSync();
+    });
+
+    init();
+  </script>
+</body>
+</html>
