@@ -1,4 +1,3 @@
-@'
 $ErrorActionPreference = "Stop"
 
 $ProjectName = "office-signage"
@@ -46,4 +45,3 @@ Write-Host "Media folder:"
 Write-Host "  $MediaDir"
 Write-Host ""
 Write-Host "Tip: drop images/videos into the media folder; screens will update automatically."
-'@ | Set-Content -Encoding UTF8 install.ps1

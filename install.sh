@@ -1,4 +1,3 @@
-cat > install.sh <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -52,6 +51,3 @@ echo "Media folder:"
 echo "  $MEDIA_DIR"
 echo ""
 echo "Tip: drop images/videos into the media folder; screens will update automatically."
-EOF
-
-chmod +x install.sh

@@ -3,23 +3,198 @@ const http = require("http");
 const { Server } = require("socket.io");
 const path = require("path");
 const fs = require("fs");
+const crypto = require("crypto");
 const chokidar = require("chokidar");
+const session = require("express-session");
 
 const app = express();
 const server = http.createServer(app);
 const io = new Server(server);
 
+// ----------------------------
+// Paths
+// ----------------------------
 const PUBLIC_DIR = path.join(__dirname, "public");
 const MEDIA_DIR = path.join(PUBLIC_DIR, "media");
 const SETTINGS_FILE = path.join(__dirname, "settings.json");
+const HTPASSWD_FILE = path.join(__dirname, "admin.htpasswd");
 
-app.use(express.json()); // for POST /api/settings
+// ----------------------------
+// Config
+// ----------------------------
+const DEFAULT_SETTINGS = {
+  imageIntervalMs: 7000,
+};
+
+const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-me-in-prod");
+const CHOKIDAR_USEPOLLING = String(process.env.CHOKIDAR_USEPOLLING || "true") === "true";
+const CHOKIDAR_INTERVAL = Number(process.env.CHOKIDAR_INTERVAL || 500);
+const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
+
+// ----------------------------
+// Middleware
+// ----------------------------
+app.use(express.json());
+app.use(express.urlencoded({ extended: false }));
+
+const sessionMiddleware = session({
+  secret: SESSION_SECRET,
+  resave: false,
+  saveUninitialized: false,
+  cookie: {
+    httpOnly: true,
+    sameSite: "lax",
+    // secure: true, // enable behind HTTPS
+    maxAge: 12 * 60 * 60 * 1000, // 12 hours
+  },
+});
+
+app.use(sessionMiddleware);
+
+// Prevent HTML caching
+app.use((req, res, next) => {
+  if (
+    req.path.endsWith(".html") ||
+    req.path === "/admin" ||
+    req.path === "/player" ||
+    req.path === "/admin-login"
+  ) {
+    res.set("Cache-Control", "no-store");
+  }
+  next();
+});
+
+// Ensure media folder exists
+try {
+  fs.mkdirSync(MEDIA_DIR, { recursive: true });
+} catch (err) {
+  console.warn("⚠️ Could not create media dir:", err.message);
+}
+
+// Explicit /media static route with no caching
+app.use(
+  "/media",
+  express.static(MEDIA_DIR, {
+    etag: false,
+    lastModified: true,
+    setHeaders(res, filePath) {
+      res.setHeader("Cache-Control", "no-store");
+
+      const lower = filePath.toLowerCase();
+      if (lower.endsWith(".mp4")) res.setHeader("Content-Type", "video/mp4");
+      if (lower.endsWith(".webm")) res.setHeader("Content-Type", "video/webm");
+      if (lower.endsWith(".mov")) res.setHeader("Content-Type", "video/quicktime");
+    },
+  })
+);
+
+// Static public files
 app.use(express.static(PUBLIC_DIR));
 
 // ----------------------------
-// Settings (persisted)
+// htpasswd init
 // ----------------------------
-const DEFAULT_SETTINGS = { imageIntervalMs: 7000 };
+let htpasswd = null;
+
+function to64(value, length) {
+  const chars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  let output = "";
+  let current = value;
+
+  while (length > 0) {
+    output += chars[current & 0x3f];
+    current >>= 6;
+    length -= 1;
+  }
+
+  return output;
+}
+
+function md5(input) {
+  return crypto.createHash("md5").update(input).digest();
+}
+
+function apr1(password, salt) {
+  const magic = "$apr1$";
+  const salt8 = salt.replace(/^\$apr1\$/, "").split("$")[0].slice(0, 8);
+
+  let ctx = Buffer.concat([
+    Buffer.from(password + magic + salt8, "utf8"),
+    Buffer.alloc(0),
+  ]);
+
+  let final = md5(password + salt8 + password);
+
+  for (let remaining = password.length; remaining > 0; remaining -= 16) {
+    ctx = Buffer.concat([ctx, final.subarray(0, Math.min(16, remaining))]);
+  }
+
+  for (let bits = password.length; bits > 0; bits >>= 1) {
+    ctx = Buffer.concat([ctx, Buffer.from(bits & 1 ? "\x00" : password[0], "binary")]);
+  }
+
+  final = md5(ctx);
+
+  for (let i = 0; i < 1000; i += 1) {
+    const parts = [];
+
+    parts.push(Buffer.from(i % 2 ? password : final));
+    if (i % 3) parts.push(Buffer.from(salt8));
+    if (i % 7) parts.push(Buffer.from(password));
+    parts.push(Buffer.from(i % 2 ? final : password));
+
+    final = md5(Buffer.concat(parts));
+  }
+
+  const encoded =
+    to64((final[0] << 16) | (final[6] << 8) | final[12], 4) +
+    to64((final[1] << 16) | (final[7] << 8) | final[13], 4) +
+    to64((final[2] << 16) | (final[8] << 8) | final[14], 4) +
+    to64((final[3] << 16) | (final[9] << 8) | final[15], 4) +
+    to64((final[4] << 16) | (final[10] << 8) | final[5], 4) +
+    to64(final[11], 2);
+
+  return `${magic}${salt8}$${encoded}`;
+}
+
+function createHtpasswdAuth(filePath) {
+  return {
+    async authenticate(username, password) {
+      const raw = fs.readFileSync(filePath, "utf8");
+      const line = raw
+        .split(/\r?\n/)
+        .map((entry) => entry.trim())
+        .find((entry) => entry && !entry.startsWith("#") && entry.startsWith(`${username}:`));
+
+      if (!line) return false;
+
+      const hash = line.slice(username.length + 1);
+
+      if (hash.startsWith("$apr1$")) {
+        return apr1(password, hash) === hash;
+      }
+
+      throw new Error(`Unsupported htpasswd hash format for user ${username}`);
+    },
+  };
+}
+
+function initHtpasswd() {
+  if (!fs.existsSync(HTPASSWD_FILE)) {
+    console.warn(`⚠️ Missing ${HTPASSWD_FILE}`);
+    console.warn("   Create it with: htpasswd -c admin.htpasswd admin");
+    htpasswd = null;
+    return;
+  }
+
+  htpasswd = createHtpasswdAuth(HTPASSWD_FILE);
+}
+
+initHtpasswd();
+
+// ----------------------------
+// Settings
+// ----------------------------
 let settings = { ...DEFAULT_SETTINGS };
 
 function loadSettings() {
@@ -31,8 +206,8 @@ function loadSettings() {
     } else {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
     }
-  } catch (e) {
-    console.warn("⚠️ Could not load settings.json, using defaults:", e.message);
+  } catch (err) {
+    console.warn("⚠️ Could not load settings.json, using defaults:", err.message);
     settings = { ...DEFAULT_SETTINGS };
   }
 }
@@ -40,25 +215,136 @@ function loadSettings() {
 function saveSettings() {
   try {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
-  } catch (e) {
-    console.warn("⚠️ Failed to save settings.json:", e.message);
+  } catch (err) {
+    console.warn("⚠️ Failed to save settings.json:", err.message);
   }
 }
 
 loadSettings();
 
-// Ensure media folder exists
-try {
-  fs.mkdirSync(MEDIA_DIR, { recursive: true });
-} catch (e) {
-  console.warn("⚠️ Could not create media dir:", e.message);
+// ----------------------------
+// Auth helpers
+// ----------------------------
+function requireAdmin(req, res, next) {
+  if (req.session && req.session.isAdmin === true) return next();
+  return res.redirect("/admin-login");
+}
+
+// Basic login rate limiting per IP
+const loginLimiter = new Map(); // ip -> { fails, lockUntil }
+
+function getClientIp(req) {
+  return (
+    req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
+    req.socket.remoteAddress ||
+    "unknown"
+  );
+}
+
+function isLocked(ip) {
+  const row = loginLimiter.get(ip);
+  return !!(row && row.lockUntil && Date.now() < row.lockUntil);
+}
+
+function recordFail(ip) {
+  const row = loginLimiter.get(ip) || { fails: 0, lockUntil: 0 };
+  row.fails += 1;
+
+  if (row.fails >= 5) {
+    row.lockUntil = Date.now() + 60_000;
+    row.fails = 0;
+  }
+
+  loginLimiter.set(ip, row);
+}
+
+function clearFails(ip) {
+  loginLimiter.delete(ip);
 }
 
 // ----------------------------
-// Clean routes
+// Routes
 // ----------------------------
-app.get("/player", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "player.html")));
-app.get("/admin", (req, res) => res.sendFile(path.join(PUBLIC_DIR, "admin.html")));
+app.get("/player", (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "player.html"));
+});
+
+app.get("/admin", requireAdmin, (req, res) => {
+  res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+});
+
+app.get("/admin-login", (req, res) => {
+  const err = req.query.err ? "❌ Invalid login" : "";
+  const missing = !htpasswd ? "⚠️ Server missing admin.htpasswd" : "";
+  const locked = req.query.lock ? "⏳ Too many attempts. Try again shortly." : "";
+
+  res.type("html").send(`
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Login</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:Arial;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
+    .card{background:#1c1c1c;padding:24px;border-radius:12px;max-width:360px;width:92%}
+    h2{margin:0 0 14px 0;font-size:20px}
+    input{width:100%;padding:12px 10px;font-size:18px;letter-spacing:8px;text-align:center;border-radius:10px;border:1px solid #333;background:#0f0f0f;color:#fff;box-sizing:border-box}
+    button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#2d7dff;color:#fff;font-size:16px;cursor:pointer}
+    button:hover{background:#1e5fd1}
+    .msg{margin-top:10px;opacity:.9;font-size:13px;min-height:18px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>Office Signage Admin</h2>
+    <form method="POST" action="/admin-login">
+      <input
+        name="pin"
+        inputmode="numeric"
+        pattern="\\d{5,20}"
+        maxlength="20"
+        placeholder="PIN / Password"
+        autocomplete="current-password"
+        required
+      />
+      <button type="submit">Unlock</button>
+    </form>
+    <div class="msg">${locked || missing || err}</div>
+  </div>
+</body>
+</html>
+  `);
+});
+
+app.post("/admin-login", async (req, res) => {
+  const ip = getClientIp(req);
+
+  if (isLocked(ip)) return res.redirect("/admin-login?lock=1");
+  if (!htpasswd) return res.redirect("/admin-login?err=1");
+
+  const password = String(req.body.pin || "").trim();
+
+  try {
+    const ok = await htpasswd.authenticate(ADMIN_USER, password);
+
+    if (ok) {
+      req.session.isAdmin = true;
+      clearFails(ip);
+      return res.redirect("/admin");
+    }
+
+    recordFail(ip);
+    return res.redirect("/admin-login?err=1");
+  } catch (err) {
+    console.warn("htpasswd auth error:", err.message);
+    recordFail(ip);
+    return res.redirect("/admin-login?err=1");
+  }
+});
+
+app.post("/admin-logout", (req, res) => {
+  req.session.destroy(() => res.redirect("/admin-login"));
+});
 
 // ----------------------------
 // Playlist
@@ -71,25 +357,41 @@ function isJunk(name) {
   return (
     lower === ".ds_store" ||
     lower === "thumbs.db" ||
-    lower.startsWith("._") || // macOS resource fork
+    lower.startsWith("._") ||
     lower.endsWith(".part") ||
     lower.endsWith(".tmp") ||
     lower.endsWith(".crdownload")
   );
 }
 
+// Videos first, then images, then alphabetical
+function sortVideoFirst(a, b) {
+  const extA = path.extname(a).toLowerCase();
+  const extB = path.extname(b).toLowerCase();
+
+  const aIsVideo = videoExt.has(extA);
+  const bIsVideo = videoExt.has(extB);
+
+  if (aIsVideo !== bIsVideo) return aIsVideo ? -1 : 1;
+
+  return a.localeCompare(b, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
 function buildPlaylist() {
   let files = [];
+
   try {
     files = fs
       .readdirSync(MEDIA_DIR, { withFileTypes: true })
-      .filter((d) => d.isFile())
-      .map((d) => d.name);
-  } catch (e) {
+      .filter((entry) => entry.isFile())
+      .map((entry) => entry.name);
+  } catch (err) {
+    console.warn("⚠️ Could not read media directory:", err.message);
     return [];
   }
-
-  files.sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
 
   const interval = Number(settings.imageIntervalMs) || DEFAULT_SETTINGS.imageIntervalMs;
 
@@ -99,6 +401,7 @@ function buildPlaylist() {
       const ext = path.extname(name).toLowerCase();
       return imageExt.has(ext) || videoExt.has(ext);
     })
+    .sort(sortVideoFirst)
     .map((name) => {
       const ext = path.extname(name).toLowerCase();
       const isVideo = videoExt.has(ext);
@@ -116,7 +419,7 @@ app.get("/api/playlist", (req, res) => {
 });
 
 // ----------------------------
-// Sync State
+// Sync state
 // ----------------------------
 let syncState = {
   startedAt: Date.now(),
@@ -129,26 +432,31 @@ function bumpSync(reason) {
   console.log(`🕒 Sync reset (${reason}). Version=${syncState.playlistVersion}`);
 }
 
+function broadcastSync() {
+  io.emit("sync", syncState);
+}
+
+function broadcastReloadAndSync(reason) {
+  bumpSync(reason);
+  console.log(`🔁 Broadcasting reload (${reason})`);
+  io.emit("reload");
+  broadcastSync();
+}
+
 app.get("/api/sync", (req, res) => {
   res.json(syncState);
 });
 
-// Heartbeat to help clients correct drift
-setInterval(() => {
-  io.emit("sync", syncState);
-}, 2000);
-
 // ----------------------------
-// Settings API (Admin uses this)
+// Settings API
 // ----------------------------
-app.get("/api/settings", (req, res) => {
+app.get("/api/settings", requireAdmin, (req, res) => {
   res.json(settings);
 });
 
-app.post("/api/settings", (req, res) => {
+app.post("/api/settings", requireAdmin, (req, res) => {
   const interval = Number(req.body?.imageIntervalMs);
 
-  // 1s to 10min
   if (!Number.isFinite(interval) || interval < 1000 || interval > 600000) {
     return res.status(400).json({
       error: "imageIntervalMs must be a number between 1000 and 600000",
@@ -158,59 +466,62 @@ app.post("/api/settings", (req, res) => {
   settings.imageIntervalMs = Math.floor(interval);
   saveSettings();
 
-  // Re-sync all screens so timing changes apply immediately and in-sync
-  bumpSync("settings");
-  io.emit("reload");
-  io.emit("sync", syncState);
+  broadcastReloadAndSync("settings");
 
   res.json(settings);
 });
 
 // ----------------------------
-// Socket.io
+// Socket.IO auth + handlers
 // ----------------------------
-io.on("connection", (socket) => {
-  console.log("Screen connected:", socket.id);
+io.use((socket, next) => {
+  sessionMiddleware(socket.request, {}, next);
+});
 
-  // push sync state immediately
+io.on("connection", (socket) => {
+  console.log(`🟢 Client connected: ${socket.id}`);
+
+  // Send current sync state to new clients
   socket.emit("sync", syncState);
 
-  // manual reload button in admin
   socket.on("reload", () => {
-    bumpSync("manual");
-    io.emit("reload");
-    io.emit("sync", syncState);
+    const isAdmin = socket.request?.session?.isAdmin === true;
+
+    if (!isAdmin) {
+      console.warn("❌ Blocked unauthorized reload from", socket.id);
+      return;
+    }
+
+    broadcastReloadAndSync("manual");
   });
 
-  socket.on("disconnect", () => console.log("Screen disconnected:", socket.id));
+  socket.on("disconnect", () => {
+    console.log(`🔴 Client disconnected: ${socket.id}`);
+  });
 });
 
 // ----------------------------
-// File watcher (dynamic media)
+// Media watcher + debounced reload
 // ----------------------------
 let reloadTimer = null;
+
 function triggerReload(reason) {
   if (reloadTimer) clearTimeout(reloadTimer);
 
   reloadTimer = setTimeout(() => {
-    bumpSync(reason);
-    console.log(`🔁 Broadcasting reload (${reason})`);
-    io.emit("reload");
-    io.emit("sync", syncState);
+    broadcastReloadAndSync(reason);
   }, 700);
 }
 
 const watcher = chokidar.watch(MEDIA_DIR, {
   ignoreInitial: true,
   persistent: true,
-
   awaitWriteFinish: {
     stabilityThreshold: 1000,
     pollInterval: 1000,
   },
-
-  usePolling: true,
-  interval: 500,
+  usePolling: CHOKIDAR_USEPOLLING,
+  interval: CHOKIDAR_INTERVAL,
 });
 
 watcher
@@ -226,13 +537,20 @@ watcher
     console.log("Media removed:", filePath);
     triggerReload("unlink");
   })
-  .on("error", (err) => console.error("Watcher error:", err));
+  .on("error", (err) => {
+    console.error("Watcher error:", err);
+  });
 
 // ----------------------------
-// Start server
+// Start
 // ----------------------------
-server.listen(3000, "0.0.0.0", () => {
-  console.log("Signage server running on port 3000");
+const PORT = Number(process.env.PORT || 3000);
+
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Signage server running on port ${PORT}`);
   console.log("Watching media folder:", MEDIA_DIR);
-  console.log("Current image interval (ms):", settings.imageIntervalMs);
+  console.log("Image interval (ms):", settings.imageIntervalMs);
+  console.log("Chokidar polling:", CHOKIDAR_USEPOLLING, "interval:", CHOKIDAR_INTERVAL);
+  console.log("Admin login:", `http://localhost:${PORT}/admin-login`);
+  console.log("htpasswd file:", HTPASSWD_FILE);
 });

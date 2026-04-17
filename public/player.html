@@ -26,6 +26,8 @@
 
     let currentIndex = 0;
     let nextTimer = null;
+    let currentNode = null;
+    let currentKind = null; // "image" | "video" | null
 
     async function fetchPlaylist() {
       const res = await fetch("/api/playlist", { cache: "no-store" });
@@ -44,48 +46,85 @@
       nextTimer = null;
     }
 
-    function showEmpty() {
+    function cleanupCurrentNode() {
+      if (currentNode) {
+        currentNode.onended = null;
+        currentNode.onerror = null;
+        currentNode.onload = null;
+        currentNode.pause?.();
+        currentNode = null;
+      }
+    }
+
+    function resetPlaybackState() {
       clearTimers();
+      cleanupCurrentNode();
+      currentKind = null;
+      stage.innerHTML = "";
+    }
+
+    function showEmpty() {
+      resetPlaybackState();
       stage.innerHTML = `<div class="empty">No media found in <b style="margin-left:6px;">/public/media</b></div>`;
     }
 
-    // Calculate which image slot we should be on based on server startedAt
-    // Only images have durations; videos are treated as duration=0 for indexing
-    function buildTimeline() {
-      // Convert playlist into "slots" with duration
-      // Videos: duration 0 (they won't advance via time; they'll advance onended)
-      return playlist.map(item => ({
-        ...item,
-        ms: item.type === "image" ? (item.duration || 7000) : 0
-      }));
+    // Build timeline using IMAGES ONLY for time-based sync
+    // Videos are not time-synced here because they should play through naturally
+    function buildImageTimeline() {
+      const timeline = [];
+
+      playlist.forEach((item, playlistIndex) => {
+        if (item.type === "image") {
+          timeline.push({
+            ...item,
+            playlistIndex,
+            ms: item.duration || 7000
+          });
+        }
+      });
+
+      return timeline;
     }
 
-    function computeIndexAndRemainder(timeline, elapsedMs) {
-      // If all slots are 0ms (e.g. only videos), just start at 0.
-      const totalMs = timeline.reduce((sum, x) => sum + (x.ms || 0), 0);
-      if (totalMs <= 0) return { index: 0, remainingMs: null };
+    function computeImageIndexAndRemainder(timeline, elapsedMs) {
+      const totalMs = timeline.reduce((sum, x) => sum + x.ms, 0);
+
+      if (totalMs <= 0) {
+        return { imageTimelineIndex: 0, remainingMs: null };
+      }
 
       let t = elapsedMs % totalMs;
 
       for (let i = 0; i < timeline.length; i++) {
-        const dur = timeline[i].ms || 0;
-        if (dur === 0) continue; // skip videos in time calc
-        if (t < dur) return { index: i, remainingMs: dur - t };
+        const dur = timeline[i].ms;
+        if (t < dur) {
+          return {
+            imageTimelineIndex: i,
+            remainingMs: dur - t
+          };
+        }
         t -= dur;
       }
 
-      // Fallback
-      return { index: 0, remainingMs: timeline[0]?.ms || 7000 };
+      return {
+        imageTimelineIndex: 0,
+        remainingMs: timeline[0]?.ms || 7000
+      };
     }
 
     function renderItem(item) {
       stage.innerHTML = "";
+      cleanupCurrentNode();
 
       if (item.type === "image") {
         const img = document.createElement("img");
         img.src = item.src;
         stage.appendChild(img);
-        return { kind: "image" };
+
+        currentNode = img;
+        currentKind = "image";
+
+        return { kind: "image", node: img };
       }
 
       if (item.type === "video") {
@@ -94,74 +133,106 @@
         video.autoplay = true;
         video.muted = true;
         video.playsInline = true;
-        // Optional: helps some browsers start quicker
         video.preload = "auto";
+        video.controls = false;
+
         stage.appendChild(video);
+
+        currentNode = video;
+        currentKind = "video";
+
         return { kind: "video", node: video };
       }
 
-      return { kind: "unknown" };
+      currentKind = null;
+      return { kind: "unknown", node: null };
+    }
+
+    function advanceSequentially() {
+      if (!playlist.length) return showEmpty();
+      currentIndex = (currentIndex + 1) % playlist.length;
+      playSequential(currentIndex);
+    }
+
+    function playSequential(i) {
+      clearTimers();
+
+      if (!playlist.length) return showEmpty();
+
+      currentIndex = i;
+      const item = playlist[currentIndex];
+      const rendered = renderItem(item);
+
+      if (rendered.kind === "image") {
+        nextTimer = setTimeout(() => {
+          advanceSequentially();
+        }, item.duration || 7000);
+        return;
+      }
+
+      if (rendered.kind === "video") {
+        const video = rendered.node;
+
+        video.onended = () => {
+          advanceSequentially();
+        };
+
+        video.onerror = () => {
+          advanceSequentially();
+        };
+
+        video.play().catch((err) => {
+          console.error("Video playback failed:", err);
+          advanceSequentially();
+        });
+
+        return;
+      }
+
+      showEmpty();
     }
 
     function playFromSync() {
       clearTimers();
 
-      if (!Array.isArray(playlist) || playlist.length === 0) return showEmpty();
+      if (!Array.isArray(playlist) || playlist.length === 0) {
+        return showEmpty();
+      }
+
+      // If no sync info, just start locally
       if (!syncState || !syncState.startedAt) {
-        // If sync missing, just do a simple local start
         currentIndex = 0;
-        playItemLocal(currentIndex);
+        playSequential(currentIndex);
         return;
       }
 
-      const timeline = buildTimeline();
-      const elapsed = Date.now() - syncState.startedAt;
+      const imageTimeline = buildImageTimeline();
 
-      const { index, remainingMs } = computeIndexAndRemainder(timeline, Math.max(0, elapsed));
-      currentIndex = index;
-
-      const item = timeline[currentIndex];
-      const rendered = renderItem(item);
-
-      if (rendered.kind === "image") {
-        // schedule next change exactly on the boundary
-        nextTimer = setTimeout(() => {
-          // advance to next non-zero slot (image) first, or just next item if you want
-          playFromSync();
-        }, remainingMs || (item.duration || 7000));
-      } else if (rendered.kind === "video") {
-        // videos run to end; after it ends, realign to sync (prevents drift)
-        rendered.node.onended = () => playFromSync();
-        rendered.node.onerror = () => playFromSync();
-      } else {
-        showEmpty();
+      // If playlist is only videos, no meaningful time sync is possible
+      if (imageTimeline.length === 0) {
+        currentIndex = 0;
+        playSequential(currentIndex);
+        return;
       }
-    }
 
-    function playItemLocal(i) {
-      clearTimers();
-      if (!playlist.length) return showEmpty();
+      const elapsed = Math.max(0, Date.now() - syncState.startedAt);
+      const { imageTimelineIndex, remainingMs } = computeImageIndexAndRemainder(imageTimeline, elapsed);
 
-      const item = playlist[i];
+      // Start on the synced IMAGE slot
+      currentIndex = imageTimeline[imageTimelineIndex].playlistIndex;
+
+      const item = playlist[currentIndex];
       const rendered = renderItem(item);
 
       if (rendered.kind === "image") {
         nextTimer = setTimeout(() => {
-          currentIndex = (currentIndex + 1) % playlist.length;
-          playItemLocal(currentIndex);
-        }, item.duration || 7000);
-      } else if (rendered.kind === "video") {
-        rendered.node.onended = () => {
-          currentIndex = (currentIndex + 1) % playlist.length;
-          playItemLocal(currentIndex);
-        };
-        rendered.node.onerror = () => {
-          currentIndex = (currentIndex + 1) % playlist.length;
-          playItemLocal(currentIndex);
-        };
-      } else {
-        showEmpty();
+          advanceSequentially();
+        }, remainingMs || item.duration || 7000);
+        return;
       }
+
+      // Fallback (shouldn't really happen now)
+      playSequential(currentIndex);
     }
 
     async function init() {
@@ -169,19 +240,23 @@
       playFromSync();
     }
 
-    // When media changes, server triggers reload; we refetch everything and re-sync
+    // Media/library changed: do a full re-fetch and re-sync
     socket.on("reload", async () => {
       await Promise.all([fetchPlaylist(), fetchSync()]);
       playFromSync();
     });
 
-    // Heartbeat sync: if we drift, this pulls us back in line
+    // Soft sync update: store latest sync state, but DO NOT restart videos constantly
     socket.on("sync", (state) => {
       syncState = state;
-      // Light-touch re-align: only re-sync if we're out by more than ~500ms on image boundaries
-      // (Simpler: just call playFromSync() every time, but that can feel "snappy")
-      // We'll do the simple reliable approach:
-      playFromSync();
+
+      // Optional gentle correction:
+      // only re-sync while currently showing an image
+      // avoid interrupting videos entirely
+      if (currentKind === "image") {
+        clearTimers();
+        playFromSync();
+      }
     });
 
     init();

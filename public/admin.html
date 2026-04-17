@@ -1,131 +1,157 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Admin Panel</title>
+  <title>Office Signage Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #111;
-      color: #fff;
-      padding: 24px;
+    body{
+      font-family:Arial;
+      background:#111;
+      color:#fff;
+      margin:0;
+      padding:30px;
     }
 
-    h2 { margin-top: 0; }
-
-    .card {
-      background: #1c1c1c;
-      padding: 18px;
-      border-radius: 8px;
-      margin-bottom: 18px;
-      max-width: 420px;
+    h1{
+      margin-top:0;
     }
 
-    input {
-      padding: 6px 8px;
-      font-size: 14px;
-      width: 90px;
-      margin-left: 8px;
+    .card{
+      background:#1c1c1c;
+      padding:20px;
+      border-radius:10px;
+      max-width:500px;
     }
 
-    button {
-      padding: 8px 14px;
-      font-size: 14px;
-      margin-top: 10px;
-      cursor: pointer;
-      border-radius: 5px;
-      border: none;
-      background: #2d7dff;
-      color: white;
+    label{
+      display:block;
+      margin-top:15px;
+      font-size:14px;
+      opacity:.8;
     }
 
-    button:hover { background: #1e5fd1; }
+    input{
+      width:100%;
+      padding:10px;
+      font-size:16px;
+      border-radius:6px;
+      border:1px solid #333;
+      background:#0f0f0f;
+      color:#fff;
+      margin-top:5px;
+    }
 
-    .status {
-      margin-left: 10px;
-      opacity: 0.85;
-      font-size: 13px;
+    button{
+      margin-top:15px;
+      padding:10px 16px;
+      font-size:14px;
+      border:none;
+      border-radius:6px;
+      background:#2d7dff;
+      color:white;
+      cursor:pointer;
+    }
+
+    button:hover{
+      background:#1e5fd1;
+    }
+
+    .danger{
+      background:#ff3b3b;
+    }
+
+    .danger:hover{
+      background:#c62828;
+    }
+
+    .status{
+      margin-top:10px;
+      font-size:13px;
+      opacity:.8;
     }
   </style>
 </head>
 
 <body>
 
-<h2>Office Signage Admin</h2>
+<h1>Office Signage Admin</h1>
 
 <div class="card">
-  <strong>Image interval</strong><br><br>
 
-  <label>
-    Change every:
-    <input id="intervalSec" type="number" min="1" max="600" step="1">
-    seconds
-  </label>
-  <br>
+<label>Image Interval (seconds)</label>
+<input id="intervalInput" type="number" min="1" max="600">
 
-  <button id="saveInterval">Save interval</button>
-  <span id="status" class="status"></span>
-</div>
+<button onclick="saveInterval()">Save Interval</button>
 
-<div class="card">
-  <strong>Screens</strong><br><br>
-  <button id="reloadBtn">Reload all screens</button>
+<button onclick="reloadScreens()">Reload Screens</button>
+
+<form method="POST" action="/admin-logout">
+  <button class="danger">Logout</button>
+</form>
+
+<div class="status" id="status"></div>
+
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
+
 <script>
-  const socket = io();
-  const intervalInput = document.getElementById("intervalSec");
-  const status = document.getElementById("status");
 
-  async function loadSettings() {
-    try {
-      const res = await fetch("/api/settings", { cache: "no-store" });
-      const s = await res.json();
+const socket = io();
 
-      const seconds = Math.round((s.imageIntervalMs || 7000) / 1000);
-      intervalInput.value = seconds;
-    } catch (e) {
-      status.textContent = "⚠️ Could not load settings";
-    }
+async function loadSettings(){
+
+  const res = await fetch("/api/settings");
+
+  if(res.status === 401){
+    window.location="/admin-login";
+    return;
   }
 
-  document.getElementById("saveInterval").onclick = async () => {
-    const seconds = Number(intervalInput.value);
+  const settings = await res.json();
 
-    if (!seconds || seconds < 1) {
-      status.textContent = "❌ Invalid number";
-      return;
-    }
+  document.getElementById("intervalInput").value =
+      settings.imageIntervalMs / 1000;
+}
 
-    status.textContent = "Saving...";
+async function saveInterval(){
 
-    try {
-      const res = await fetch("/api/settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          imageIntervalMs: Math.floor(seconds * 1000)
-        })
-      });
+  const seconds =
+    Number(document.getElementById("intervalInput").value);
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        status.textContent = "❌ " + (err.error || "Failed");
-        return;
-      }
+  const ms = seconds * 1000;
 
-      status.textContent = "✅ Saved — screens syncing";
-    } catch (e) {
-      status.textContent = "❌ Network error";
-    }
-  };
+  const res = await fetch("/api/settings",{
+    method:"POST",
+    headers:{
+      "Content-Type":"application/json"
+    },
+    body:JSON.stringify({
+      imageIntervalMs:ms
+    })
+  });
 
-  document.getElementById("reloadBtn").onclick = () => {
-    socket.emit("reload");
-    status.textContent = "🔁 Reload sent";
-  };
+  if(res.ok){
+    document.getElementById("status").innerText =
+      "✔ Interval saved. Screens reloading...";
+  }
+  else{
+    document.getElementById("status").innerText =
+      "❌ Failed to update interval";
+  }
+}
 
-  loadSettings();
+function reloadScreens(){
+
+  socket.emit("reload");
+
+  document.getElementById("status").innerText =
+    "Reload signal sent to all screens";
+}
+
+loadSettings();
+
 </script>
 
 </body>
