@@ -166,8 +166,28 @@
     }
 
     .panel-icon {
-      font-size: 24px;
-      opacity: 0.9;
+      min-width: 42px;
+      height: 26px;
+      padding: 0 8px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.08);
+      color: var(--soft);
+      flex: 0 0 auto;
+    }
+
+    .panel-icon svg {
+      width: 15px;
+      height: 15px;
+      display: block;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.7;
+      stroke-linecap: round;
+      stroke-linejoin: round;
     }
 
     .panel-name {
@@ -365,6 +385,20 @@
       margin-bottom: 12px;
     }
 
+    .media-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .media-actions button {
+      min-width: 118px;
+      padding: 8px 10px;
+      font-size: 10px;
+      flex: 0 0 auto;
+    }
+
     .media-heading {
       font-size: 12px;
       color: var(--soft);
@@ -390,13 +424,30 @@
 
     .media-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) auto auto minmax(190px, auto);
+      grid-template-columns: auto minmax(0, 1fr) auto auto minmax(190px, auto) auto;
       gap: 12px;
       align-items: center;
       padding: 10px 12px;
       border: 1px solid rgba(148, 163, 184, 0.16);
       border-radius: 4px;
       background: rgba(2, 6, 23, 0.26);
+    }
+
+    .media-row.dragging {
+      opacity: 0.45;
+      border-color: var(--accent);
+    }
+
+    .drag-handle {
+      color: var(--muted);
+      cursor: grab;
+      font-size: 16px;
+      line-height: 1;
+      user-select: none;
+    }
+
+    .drag-handle:active {
+      cursor: grabbing;
     }
 
     .media-name {
@@ -462,6 +513,13 @@
       opacity: 0.85;
     }
 
+    .media-remove {
+      min-width: 76px;
+      padding: 7px 9px;
+      font-size: 10px;
+      flex: 0 0 auto;
+    }
+
     .media-empty {
       padding: 14px 12px;
       border: 1px dashed rgba(148, 163, 184, 0.3);
@@ -477,6 +535,106 @@
 
     .logout-panel button {
       width: auto;
+    }
+
+    .account-stack {
+      display: grid;
+      gap: 18px;
+    }
+
+    .account-section {
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+
+    .account-section:first-child {
+      border-top: 0;
+      padding-top: 0;
+    }
+
+    .account-disclosure-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .account-disclosure-toggle::before {
+      content: "▸";
+      font-size: 12px;
+      color: var(--accent);
+      transition: transform 0.2s ease;
+    }
+
+    .account-disclosure-toggle.is-open::before {
+      transform: rotate(90deg);
+    }
+
+    .account-disclosure-content {
+      display: none;
+      margin-top: 18px;
+    }
+
+    .account-disclosure-content.is-open {
+      display: block;
+    }
+
+    .preview-panel {
+      margin-top: 22px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+
+    .preview-window {
+      position: relative;
+      width: min(520px, 100%);
+      aspect-ratio: 16 / 9;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 8px;
+      background: #020617;
+      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
+    }
+
+    .preview-window img,
+    .preview-window video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: block;
+    }
+
+    .preview-empty {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    .preview-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px;
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .preview-pill {
+      border: 1px solid rgba(56, 189, 248, 0.28);
+      border-radius: 999px;
+      padding: 4px 9px;
+      color: #bae6fd;
+      background: rgba(14, 165, 233, 0.08);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
     }
 
     @media (max-width: 520px) {
@@ -495,7 +653,7 @@
       }
 
       .media-row {
-        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-columns: auto minmax(0, 1fr) auto;
       }
 
       .copy-row {
@@ -507,14 +665,19 @@
       }
 
       .duration-control,
-      .duration-note {
-        grid-column: 1 / -1;
+      .duration-note,
+      .media-remove {
+        grid-column: 2 / -1;
       }
 
       .compact-actions button,
       button.compact {
         width: 100%;
         max-width: none;
+      }
+
+      .preview-window {
+        width: 100%;
       }
     }
 
@@ -525,7 +688,7 @@
 
 <div class="header">
   <div class="header-content">
-    <div class="logo">⬤ Signage Control</div>
+    <div class="logo">Signage Control</div>
     <div class="status-indicator">
       <span class="status-dot"></span>
       <span>System Online</span>
@@ -540,13 +703,18 @@
   <div class="grid">
     <div class="panel">
       <div class="panel-header">
-        <span class="panel-icon">⏱️</span>
+        <span class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <circle cx="8" cy="8" r="5.25"></circle>
+            <path d="M8 5.2v3.1l2.2 1.5"></path>
+          </svg>
+        </span>
         <span class="panel-name">Interval Control</span>
       </div>
-      <label>Image Display Duration (seconds)</label>
+      <label>Default Overall Image Time (seconds)</label>
       <input id="intervalInput" type="number" min="1" max="600">
-      <div class="button-group">
-        <button onclick="saveInterval()">Apply</button>
+      <div class="button-group compact-actions">
+        <button onclick="saveInterval()">Apply To All Images</button>
       </div>
       <div class="status" id="settingsStatus"></div>
       <div class="media-browser">
@@ -555,7 +723,11 @@
             Media Folder
             <span class="media-count" id="mediaCount">0 items</span>
           </div>
-          <button class="compact" onclick="loadMediaFiles()">Refresh List</button>
+          <div class="media-actions">
+            <button onclick="saveMediaOrder()">Save Order</button>
+            <button onclick="resetMediaOrder()">Reset Order</button>
+            <button onclick="loadMediaFiles()">Refresh List</button>
+          </div>
         </div>
         <div class="media-list" id="mediaList">
           <div class="media-empty">Loading media folder...</div>
@@ -565,11 +737,17 @@
 
     <div class="panel">
       <div class="panel-header">
-        <span class="panel-icon">📤</span>
+        <span class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <rect x="2.75" y="3.25" width="10.5" height="9.5" rx="1.5"></rect>
+            <path d="M4.4 10.2 6.5 8.1l2.1 2.1 1.3-1.3 1.7 1.7"></path>
+            <circle cx="5.3" cy="5.7" r="0.95" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </span>
         <span class="panel-name">Media Upload</span>
       </div>
-      <label>Select Media File (Image or Video)</label>
-      <input id="fileInput" type="file" accept="image/*,video/*">
+      <label>Select Up To 10 Media Files</label>
+      <input id="fileInput" type="file" accept="image/*,video/*" multiple>
       <div class="button-group">
         <button onclick="uploadFile()">Upload</button>
         <button class="danger" onclick="confirmClearMedia()">Clear Media Folder</button>
@@ -578,12 +756,44 @@
     </div>
   </div>
 
+  <div class="grid">
+    <div class="panel full-width">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <rect x="2.75" y="3.25" width="10.5" height="9.5" rx="1.5"></rect>
+            <path d="M4.4 10.2 6.5 8.1l2.1 2.1 1.3-1.3 1.7 1.7"></path>
+            <circle cx="5.3" cy="5.7" r="0.95" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </span>
+        <span class="panel-name">Live Preview</span>
+      </div>
+      <div class="media-toolbar">
+        <div class="media-heading">Current Display View</div>
+        <button class="compact" onclick="refreshPreview()">Refresh Preview</button>
+      </div>
+      <div class="preview-window" id="previewWindow">
+        <div class="preview-empty">Loading preview...</div>
+      </div>
+      <div class="preview-meta">
+        <span class="preview-pill" id="previewState">Syncing</span>
+        <span id="previewName">No media loaded</span>
+      </div>
+    </div>
+  </div>
+
   <div class="panel-title">▌ Screen Operations</div>
 
   <div class="grid">
     <div class="panel full-width">
       <div class="panel-header">
-        <span class="panel-icon">📡</span>
+        <span class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <path d="M3 11.5a5.6 5.6 0 0 1 10 0"></path>
+            <path d="M5 9.2a3.5 3.5 0 0 1 6 0"></path>
+            <circle cx="8" cy="12" r="0.9" fill="currentColor" stroke="none"></circle>
+          </svg>
+        </span>
         <span class="panel-name">Broadcast Control</span>
       </div>
       <label>Player URL</label>
@@ -603,11 +813,47 @@
 
   <div class="grid">
     <div class="panel logout-panel full-width">
-      <form method="POST" action="/admin-logout" style="margin: 0;">
-        <div class="button-group compact-actions" style="margin-top: 0;">
-          <button class="danger">Logout</button>
+      <div class="account-stack">
+        <div class="account-section">
+          <div class="panel-header">
+            <span class="panel-icon" aria-hidden="true">
+              <svg viewBox="0 0 16 16">
+                <rect x="3.5" y="7.2" width="9" height="5.3" rx="1.3"></rect>
+                <path d="M5.5 7.2V5.7a2.5 2.5 0 0 1 5 0v1.5"></path>
+              </svg>
+            </span>
+            <span class="panel-name">Password Reset</span>
+          </div>
+          <button
+            id="passwordResetToggle"
+            class="compact account-disclosure-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="passwordResetContent"
+            onclick="togglePasswordResetMenu()"
+          >
+            Password Reset Menu
+          </button>
+          <div id="passwordResetContent" class="account-disclosure-content">
+            <label>New Admin Password</label>
+            <input id="passwordInput" type="password" maxlength="64" autocomplete="new-password">
+            <label>Confirm New Password</label>
+            <input id="passwordConfirmInput" type="password" maxlength="64" autocomplete="new-password">
+            <div class="button-group compact-actions">
+              <button onclick="resetAdminPassword()">Update Password</button>
+            </div>
+          </div>
+          <div class="status" id="accountStatus"></div>
         </div>
-      </form>
+
+        <div class="account-section">
+          <form method="POST" action="/admin-logout" style="margin: 0;">
+            <div class="button-group compact-actions" style="margin-top: 0;">
+              <button class="danger">Logout</button>
+            </div>
+          </form>
+        </div>
+      </div>
     </div>
   </div>
 </div>
@@ -618,6 +864,11 @@
 
 const socket = io();
 let screensPaused = false;
+let previewPlaylist = [];
+let previewSyncState = null;
+let previewTimer = null;
+let previewVideoTimer = null;
+let previewCurrentSrc = "";
 
 function showStatus(status, type, message){
   status.classList.remove("success", "error");
@@ -626,15 +877,231 @@ function showStatus(status, type, message){
   setTimeout(() => status.classList.remove("show"), 4000);
 }
 
-function setPlayerUrl(){
+async function setPlayerUrl(){
   const input = document.getElementById("playerUrlInput");
-  input.value = `${window.location.origin}/player`;
+  const fallback = `${window.location.origin}/player`;
+
+  try {
+    const res = await fetch("/api/network");
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+    input.value = data?.playerUrl || fallback;
+  } catch (e) {
+    input.value = fallback;
+  }
 }
 
 function updatePauseButton(){
   const button = document.getElementById("pauseButton");
   button.innerText = screensPaused ? "Resume All Displays" : "Pause All Displays";
   button.classList.toggle("danger", screensPaused);
+  updatePreviewStateLabel();
+}
+
+function togglePasswordResetMenu(forceOpen){
+  const toggle = document.getElementById("passwordResetToggle");
+  const content = document.getElementById("passwordResetContent");
+  if(!toggle || !content) return;
+
+  const isOpen = typeof forceOpen === "boolean"
+    ? forceOpen
+    : !content.classList.contains("is-open");
+
+  content.classList.toggle("is-open", isOpen);
+  toggle.classList.toggle("is-open", isOpen);
+  toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
+}
+
+function mediaNameFromSrc(src){
+  const encoded = (String(src || "").split("/").pop() || "").split("?")[0];
+  try {
+    return decodeURIComponent(encoded);
+  } catch (e) {
+    return encoded;
+  }
+}
+
+function clearPreviewTimers(){
+  if(previewTimer) clearTimeout(previewTimer);
+  if(previewVideoTimer) clearTimeout(previewVideoTimer);
+  previewTimer = null;
+  previewVideoTimer = null;
+}
+
+function updatePreviewStateLabel(){
+  const state = document.getElementById("previewState");
+  if(!state) return;
+  state.innerText = screensPaused ? "Paused" : "Live";
+}
+
+function renderPreviewFromPlayerState(payload){
+  if(!payload?.state?.src){
+    return;
+  }
+
+  clearPreviewTimers();
+
+  const state = payload.state;
+  const label = document.getElementById("previewState");
+  if(label){
+    label.innerText = state.paused ? "Paused Display" : "Display Live";
+  }
+
+  const node = renderPreviewItem({
+    type: state.type,
+    src: state.src
+  });
+
+  if(state.paused && node?.pause){
+    node.pause();
+  }
+}
+
+function buildPreviewImageTimeline(){
+  const timeline = [];
+
+  previewPlaylist.forEach((item, playlistIndex) => {
+    if(item.type === "image"){
+      timeline.push({
+        ...item,
+        playlistIndex,
+        ms: item.duration || 7000
+      });
+    }
+  });
+
+  return timeline;
+}
+
+function computePreviewImageIndexAndRemainder(timeline, elapsedMs){
+  const totalMs = timeline.reduce((sum, item) => sum + item.ms, 0);
+
+  if(totalMs <= 0){
+    return { imageTimelineIndex: 0, remainingMs: null };
+  }
+
+  let t = elapsedMs % totalMs;
+
+  for(let i = 0; i < timeline.length; i += 1){
+    const duration = timeline[i].ms;
+    if(t < duration){
+      return {
+        imageTimelineIndex: i,
+        remainingMs: duration - t
+      };
+    }
+    t -= duration;
+  }
+
+  return {
+    imageTimelineIndex: 0,
+    remainingMs: timeline[0]?.ms || 7000
+  };
+}
+
+function renderPreviewItem(item){
+  const preview = document.getElementById("previewWindow");
+  const name = document.getElementById("previewName");
+
+  if(!item){
+    previewCurrentSrc = "";
+    preview.innerHTML = '<div class="preview-empty">No media found.</div>';
+    name.innerText = "No media loaded";
+    return null;
+  }
+
+  name.innerText = mediaNameFromSrc(item.src);
+
+  if(previewCurrentSrc === item.src){
+    return preview.querySelector("img, video");
+  }
+
+  previewCurrentSrc = item.src;
+  preview.innerHTML = "";
+
+  if(item.type === "image"){
+    const img = document.createElement("img");
+    img.src = item.src;
+    preview.appendChild(img);
+    return img;
+  }
+
+  if(item.type === "video"){
+    const video = document.createElement("video");
+    video.src = item.src;
+    video.autoplay = !screensPaused;
+    video.muted = true;
+    video.playsInline = true;
+    video.preload = "metadata";
+    video.controls = false;
+    preview.appendChild(video);
+
+    if(!screensPaused){
+      video.play().catch(() => {});
+    }
+
+    return video;
+  }
+
+  preview.innerHTML = '<div class="preview-empty">Unsupported media type.</div>';
+  return null;
+}
+
+function renderPreviewFromSync(){
+  clearPreviewTimers();
+  updatePreviewStateLabel();
+
+  if(!Array.isArray(previewPlaylist) || previewPlaylist.length === 0){
+    renderPreviewItem(null);
+    return;
+  }
+
+  const imageTimeline = buildPreviewImageTimeline();
+
+  if(imageTimeline.length === 0){
+    const item = previewPlaylist[0];
+    const node = renderPreviewItem(item);
+    if(screensPaused && node?.pause) node.pause();
+    return;
+  }
+
+  const elapsed = Math.max(0, Date.now() - (previewSyncState?.startedAt || Date.now()));
+  const { imageTimelineIndex, remainingMs } = computePreviewImageIndexAndRemainder(imageTimeline, elapsed);
+  const item = previewPlaylist[imageTimeline[imageTimelineIndex].playlistIndex];
+  const node = renderPreviewItem(item);
+
+  if(screensPaused){
+    if(node?.pause) node.pause();
+    return;
+  }
+
+  if(item?.type === "image"){
+    previewTimer = setTimeout(renderPreviewFromSync, remainingMs || item.duration || 7000);
+  }
+}
+
+async function refreshPreview(){
+  try {
+    const [playlistRes, syncRes] = await Promise.all([
+      fetch("/api/playlist", { cache: "no-store" }),
+      fetch("/api/sync", { cache: "no-store" })
+    ]);
+
+    previewPlaylist = await playlistRes.json();
+    previewSyncState = await syncRes.json();
+    screensPaused = previewSyncState?.paused === true;
+    updatePauseButton();
+    renderPreviewFromSync();
+  } catch (e) {
+    const preview = document.getElementById("previewWindow");
+    document.getElementById("previewName").innerText = "Preview unavailable";
+    preview.innerHTML = '<div class="preview-empty">Preview unavailable.</div>';
+  }
 }
 
 async function loadPlaybackState(){
@@ -653,6 +1120,44 @@ async function loadPlaybackState(){
     }
   } catch (e) {
     updatePauseButton();
+  }
+}
+
+async function resetAdminPassword(){
+  const passwordInput = document.getElementById("passwordInput");
+  const confirmInput = document.getElementById("passwordConfirmInput");
+  const status = document.getElementById("accountStatus");
+
+  try {
+    const res = await fetch("/api/admin-password", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        password: passwordInput.value,
+        confirmPassword: confirmInput.value
+      })
+    });
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      passwordInput.value = "";
+      confirmInput.value = "";
+      togglePasswordResetMenu(false);
+      showStatus(status, "success", "✓ Admin password updated");
+    }
+    else {
+      showStatus(status, "error", `✗ Password update failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Password update error: " + e.message);
   }
 }
 
@@ -723,6 +1228,154 @@ async function saveMediaDuration(filename, value){
   }
 }
 
+async function removeMediaFile(filename){
+  const status = document.getElementById("uploadStatus");
+  const confirmed = window.confirm(`Remove "${filename}" from the media folder? This cannot be undone.`);
+
+  if(!confirmed){
+    return;
+  }
+
+  try {
+    const res = await fetch(`/api/media/${encodeURIComponent(filename)}`, {
+      method: "DELETE"
+    });
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", `✓ Removed: ${data.filename}`);
+      loadMediaFiles();
+      refreshPreview();
+    }
+    else {
+      showStatus(status, "error", `✗ Remove failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Remove error: " + e.message);
+  }
+}
+
+function getMediaOrderFromDom(){
+  return [...document.querySelectorAll("#mediaList .media-row")]
+    .map((row) => row.dataset.filename)
+    .filter(Boolean);
+}
+
+function getDragAfterElement(container, y){
+  const rows = [...container.querySelectorAll(".media-row:not(.dragging)")];
+
+  return rows.reduce((closest, row) => {
+    const box = row.getBoundingClientRect();
+    const offset = y - box.top - box.height / 2;
+
+    if(offset < 0 && offset > closest.offset){
+      return { offset, element: row };
+    }
+
+    return closest;
+  }, { offset: Number.NEGATIVE_INFINITY, element: null }).element;
+}
+
+function enableMediaDragSort(){
+  const list = document.getElementById("mediaList");
+
+  list.querySelectorAll(".media-row").forEach((row) => {
+    row.addEventListener("dragstart", () => {
+      row.classList.add("dragging");
+    });
+
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+    });
+  });
+
+  list.ondragover = (event) => {
+    event.preventDefault();
+    const dragging = list.querySelector(".dragging");
+    if(!dragging) return;
+
+    const afterElement = getDragAfterElement(list, event.clientY);
+    if(afterElement){
+      list.insertBefore(dragging, afterElement);
+    }
+    else {
+      list.appendChild(dragging);
+    }
+  };
+}
+
+async function saveMediaOrder(){
+  const status = document.getElementById("settingsStatus");
+  const filenames = getMediaOrderFromDom();
+
+  try {
+    const res = await fetch("/api/media-order", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ filenames })
+    });
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", "✓ Media order saved. Synchronizing screens...");
+      loadMediaFiles();
+      refreshPreview();
+    }
+    else {
+      showStatus(status, "error", `✗ Order failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Order error: " + e.message);
+  }
+}
+
+async function resetMediaOrder(){
+  const status = document.getElementById("settingsStatus");
+  const confirmed = window.confirm("Reset media order back to the default video-first order?");
+
+  if(!confirmed){
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/media-order", {
+      method: "DELETE"
+    });
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", "✓ Media order reset. Synchronizing screens...");
+      loadMediaFiles();
+      refreshPreview();
+    }
+    else {
+      showStatus(status, "error", `✗ Reset failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Reset error: " + e.message);
+  }
+}
+
 function renderMediaFiles(files){
   const list = document.getElementById("mediaList");
   const count = document.getElementById("mediaCount");
@@ -740,6 +1393,13 @@ function renderMediaFiles(files){
   files.forEach((file) => {
     const row = document.createElement("div");
     row.className = "media-row";
+    row.draggable = true;
+    row.dataset.filename = file.name;
+
+    const handle = document.createElement("div");
+    handle.className = "drag-handle";
+    handle.title = "Drag to reorder";
+    handle.innerText = "⋮⋮";
 
     const name = document.createElement("div");
     name.className = "media-name";
@@ -785,12 +1445,23 @@ function renderMediaFiles(files){
       duration.innerText = "Full video";
     }
 
+    row.appendChild(handle);
     row.appendChild(name);
     row.appendChild(meta);
     row.appendChild(type);
     row.appendChild(duration);
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "danger media-remove";
+    remove.innerText = "Remove";
+    remove.onclick = () => removeMediaFile(file.name);
+    row.appendChild(remove);
+
     list.appendChild(row);
   });
+
+  enableMediaDragSort();
 }
 
 async function loadMediaFiles(){
@@ -862,25 +1533,34 @@ async function saveInterval(){
 
   const status = document.getElementById("settingsStatus");
   if(res.ok){
-    showStatus(status, "success", "✓ Interval updated. Synchronizing screens...");
+    showStatus(status, "success", "✓ Default time applied to all images. Synchronizing screens...");
+    loadMediaFiles();
+    refreshPreview();
   }
   else{
-    showStatus(status, "error", "✗ Failed to update interval");
+    showStatus(status, "error", "✗ Failed to apply default time");
   }
 }
 
 async function uploadFile(){
   const fileInput = document.getElementById("fileInput");
-  const file = fileInput.files[0];
+  const files = [...fileInput.files];
   const status = document.getElementById("uploadStatus");
 
-  if(!file){
-    showStatus(status, "error", "✗ No file selected");
+  if(files.length === 0){
+    showStatus(status, "error", "✗ No files selected");
+    return;
+  }
+
+  if(files.length > 10){
+    showStatus(status, "error", "✗ Maximum 10 files per upload");
     return;
   }
 
   const formData = new FormData();
-  formData.append("file", file);
+  files.forEach((file) => {
+    formData.append("files", file);
+  });
 
   try {
     const res = await fetch("/api/upload", {
@@ -890,9 +1570,10 @@ async function uploadFile(){
 
     if(res.ok){
       const data = await res.json();
-      showStatus(status, "success", `✓ Uploaded: ${data.filename}`);
+      showStatus(status, "success", `✓ Uploaded ${data.count} file${data.count === 1 ? "" : "s"}`);
       fileInput.value = "";
       loadMediaFiles();
+      refreshPreview();
     }
     else {
       const err = await res.json();
@@ -939,6 +1620,7 @@ function reloadScreens(){
   socket.emit("reload");
   const status = document.getElementById("reloadStatus");
   showStatus(status, "success", "✓ Reload signal broadcast to all displays");
+  refreshPreview();
 }
 
 function togglePauseScreens(){
@@ -957,12 +1639,29 @@ socket.on("client-count", (count) => {
 socket.on("playback-state", ({ paused }) => {
   screensPaused = paused === true;
   updatePauseButton();
+  renderPreviewFromSync();
+});
+
+socket.on("player-state", (payload) => {
+  renderPreviewFromPlayerState(payload);
+});
+
+socket.on("reload", () => {
+  refreshPreview();
+});
+
+socket.on("sync", (state) => {
+  previewSyncState = state;
+  screensPaused = state?.paused === true;
+  updatePauseButton();
+  renderPreviewFromSync();
 });
 
 loadSettings();
 loadMediaFiles();
 setPlayerUrl();
 loadPlaybackState();
+refreshPreview();
 
 </script>
 

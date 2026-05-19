@@ -4,8 +4,18 @@
   <title>Office Display</title>
   <style>
     body { margin: 0; background: black; overflow: hidden; }
-    #stage { width: 100vw; height: 100vh; }
+    #stage { width: 100vw; height: 100vh; position: relative; }
     img, video { width: 100vw; height: 100vh; object-fit: contain; }
+    .media-frame {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      transition: opacity 420ms ease;
+      background: black;
+    }
+    .media-frame.active {
+      opacity: 1;
+    }
     .empty {
       color: #fff; font-family: Arial, sans-serif;
       display:flex; align-items:center; justify-content:center;
@@ -29,6 +39,7 @@
     let currentNode = null;
     let currentKind = null; // "image" | "video" | null
     let isPaused = false;
+    const preloadCache = new Map();
 
     async function fetchPlaylist() {
       const res = await fetch("/api/playlist", { cache: "no-store" });
@@ -47,12 +58,65 @@
       nextTimer = null;
     }
 
+    function cacheBustedSrc(item) {
+      const version = syncState?.playlistVersion || 1;
+      const separator = item.src.includes("?") ? "&" : "?";
+      return `${item.src}${separator}v=${version}`;
+    }
+
+    function getNextIndex(index) {
+      if (!playlist.length) return -1;
+      return (index + 1) % playlist.length;
+    }
+
+    function preloadItem(index) {
+      if (index < 0 || !playlist[index]) return;
+
+      const item = playlist[index];
+      const src = cacheBustedSrc(item);
+
+      if (preloadCache.has(src)) return;
+
+      if (item.type === "image") {
+        const img = new Image();
+        img.src = src;
+        preloadCache.set(src, img);
+        return;
+      }
+
+      if (item.type === "video") {
+        const video = document.createElement("video");
+        video.src = src;
+        video.muted = true;
+        video.playsInline = true;
+        video.preload = "auto";
+        video.load();
+        preloadCache.set(src, video);
+      }
+    }
+
+    function trimPreloadCache() {
+      if (preloadCache.size <= 12) return;
+      const keys = [...preloadCache.keys()];
+      keys.slice(0, preloadCache.size - 12).forEach((key) => preloadCache.delete(key));
+    }
+
+    function reportPlayerState(item) {
+      if (!item || !item.src) return;
+      socket.emit("player-state", {
+        type: item.type,
+        src: cacheBustedSrc(item),
+        paused: isPaused
+      });
+    }
+
     function pausePlayback() {
       isPaused = true;
       clearTimers();
       if (currentKind === "video") {
         currentNode?.pause?.();
       }
+      reportPlayerState(playlist[currentIndex]);
     }
 
     function resumePlayback() {
@@ -72,6 +136,7 @@
         currentNode.onended = null;
         currentNode.onerror = null;
         currentNode.onload = null;
+        currentNode.onloadeddata = null;
         currentNode.pause?.();
         currentNode = null;
       }
@@ -133,34 +198,77 @@
       };
     }
 
+    function activateNode(node, previousNode) {
+      requestAnimationFrame(() => {
+        node.classList.add("active");
+      });
+
+      if (previousNode && previousNode !== node) {
+        previousNode.classList.remove("active");
+        setTimeout(() => {
+          if (previousNode.parentNode === stage) {
+            previousNode.remove();
+          }
+        }, 460);
+      }
+    }
+
+    function detachPreviousNode() {
+      const previousNode = currentNode;
+
+      if (previousNode) {
+        previousNode.onended = null;
+        previousNode.onerror = null;
+        previousNode.onload = null;
+        previousNode.onloadeddata = null;
+        previousNode.pause?.();
+      }
+
+      return previousNode;
+    }
+
     function renderItem(item) {
-      stage.innerHTML = "";
-      cleanupCurrentNode();
+      const src = cacheBustedSrc(item);
+      if (currentNode?.dataset?.src === src && currentKind === item.type) {
+        reportPlayerState(item);
+        return { kind: currentKind, node: currentNode };
+      }
+
+      const previousNode = detachPreviousNode();
 
       if (item.type === "image") {
         const img = document.createElement("img");
-        img.src = item.src;
+        img.className = "media-frame";
+        img.dataset.src = src;
+        img.src = src;
+        img.onload = () => activateNode(img, previousNode);
+        img.onerror = () => advanceSequentially();
         stage.appendChild(img);
 
         currentNode = img;
         currentKind = "image";
+        reportPlayerState(item);
 
         return { kind: "image", node: img };
       }
 
       if (item.type === "video") {
         const video = document.createElement("video");
-        video.src = item.src;
+        video.className = "media-frame";
+        video.dataset.src = src;
+        video.src = src;
         video.autoplay = true;
         video.muted = true;
         video.playsInline = true;
         video.preload = "auto";
         video.controls = false;
+        video.onloadeddata = () => activateNode(video, previousNode);
 
         stage.appendChild(video);
 
         currentNode = video;
         currentKind = "video";
+        reportPlayerState(item);
 
         return { kind: "video", node: video };
       }
@@ -186,6 +294,8 @@
       currentIndex = i;
       const item = playlist[currentIndex];
       const rendered = renderItem(item);
+      preloadItem(getNextIndex(currentIndex));
+      trimPreloadCache();
 
       if (rendered.kind === "image") {
         nextTimer = setTimeout(() => {
@@ -249,6 +359,8 @@
 
       const item = playlist[currentIndex];
       const rendered = renderItem(item);
+      preloadItem(getNextIndex(currentIndex));
+      trimPreloadCache();
 
       if (rendered.kind === "image") {
         nextTimer = setTimeout(() => {

@@ -15,6 +15,8 @@ if ([string]::IsNullOrWhiteSpace($HtpasswdFile)) { $HtpasswdFile = "./admin.htpa
 
 $AdminUser = $env:ADMIN_USER
 if ([string]::IsNullOrWhiteSpace($AdminUser)) { $AdminUser = "admin" }
+$RuntimeEnvFile = $env:RUNTIME_ENV_FILE
+if ([string]::IsNullOrWhiteSpace($RuntimeEnvFile)) { $RuntimeEnvFile = "./.runtime.env" }
 
 Write-Host "== $ProjectName installer =="
 
@@ -160,7 +162,7 @@ Require-File ".\server.js"
 New-Item -ItemType Directory -Force -Path $MediaDir | Out-Null
 
 if (-not (Test-Path $SettingsFile)) {
-  '{ "imageIntervalMs": 7000, "imageDurations": {} }' | Out-File -Encoding ascii $SettingsFile
+  '{ "imageIntervalMs": 7000, "imageDurations": {}, "mediaOrder": [] }' | Out-File -Encoding ascii $SettingsFile
   Write-Host "Created $SettingsFile"
 }
 
@@ -182,6 +184,11 @@ $env:SETTINGS_FILE = $SettingsFile
 $env:HTPASSWD_FILE = $HtpasswdFile
 $env:ADMIN_USER = $AdminUser
 
+$LocalIps = Get-LocalIPv4Addresses
+$PlayerHost = if ($LocalIps) { $LocalIps | Select-Object -First 1 } else { "" }
+"PLAYER_HOST=$PlayerHost" | Out-File -Encoding ascii $RuntimeEnvFile
+Write-Host "Wrote $RuntimeEnvFile"
+
 Write-Host "Starting containers..."
 docker compose up -d --build
 
@@ -190,7 +197,6 @@ Write-Host "Done."
 Write-Host "Admin:  http://localhost:$Port/admin-login"
 Write-Host "Player: http://localhost:$Port/player"
 
-$LocalIps = Get-LocalIPv4Addresses
 if ($LocalIps) {
   Write-Host ""
   Write-Host "LAN URLs:"

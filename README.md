@@ -1,7 +1,7 @@
 
 # Office Signage Project
 
-Version: `1.0.2`
+Version: `1.0.3`
 
 A lightweight, real-time **digital signage system** built with **Node.js**, **Socket.IO**, and **Docker**.
 
@@ -16,7 +16,14 @@ Designed to run on **any PC** (Windows, macOS, or Linux) and keep multiple displ
 -  Central web-based admin panel
 -  Adjustable global image interval
 -  Per-image display duration overrides
+-  Drag-and-drop media ordering with saved playlist priority
+-  Live preview panel inside the admin console
+-  Multi-file uploads up to 10 files at a time
+-  Per-file media removal and confirmation-protected media clearing
+-  Global pause/resume control for all connected displays
+-  Built-in admin password reset flow
 -  Automatic screen re-synchronization
+-  Player URL generation based on the host machine LAN IP at install/start time
 -  Docker-ready deployment
 -  Runs on any device with a web browser
 -  One-command setup/update flow for presentation machines
@@ -47,12 +54,12 @@ Windows PowerShell:
 .\install.ps1
 ```
 
-The installer creates the media folder, settings file, and admin password file, then builds and starts the Docker container.
+The installer creates the media folder, settings file, admin password file, and a local runtime env file used to pass the host LAN IP into Docker. It then builds and starts the container.
 
 Default URLs:
 
 - Admin: `http://localhost:3000/admin-login`
-- Player: `http://localhost:3000/player`
+- Player: shown in the admin panel and based on the detected host LAN IP
 - Media folder: `./public/media`
 
 Useful options:
@@ -93,7 +100,7 @@ git pull
 .\install.ps1
 ```
 
-The installer is idempotent: it keeps the existing admin password, media folder, and settings file, rebuilds the app, and starts the server. When it finishes, it prints the local and LAN URLs for the admin console and player.
+The installer is idempotent: it keeps the existing admin password, media folder, and settings file, re-detects the current machine LAN IP, rebuilds the app, and starts the server. When it finishes, it prints the local and LAN URLs for the admin console and player.
 
 First setup on a new machine will ask you to create the admin password. For a hands-off install, provide it as an environment variable:
 
@@ -109,14 +116,14 @@ $env:ADMIN_PASSWORD="your-password"; .\install.ps1
 
 ## Release Notes
 
-### v1.0.2
+### v1.0.3
 
-- Modernized the admin and login UI with cleaner typography, softer colors, and dashboard-style controls.
-- Added media upload management from the admin panel.
-- Added a confirmation-protected clear-media action.
-- Added a media folder list in Interval Control with file size/type display.
-- Added per-image duration overrides, while videos continue playing through naturally.
-- Added global pause/resume controls for all connected player screens.
-- Added copyable player URL from Screen Operations.
-- Improved Docker Compose persistence for media, settings, and admin password files.
-- Updated macOS/Linux and Windows installers for first-run setup, updates after `git pull`, and admin password resets.
+- Added drag-and-drop media ordering with saved playlist priority.
+- Added a live preview panel in Playback Management.
+- Added multi-file upload support with a 10-file limit.
+- Added per-file media removal and a confirmation-protected media clear action.
+- Added per-image duration overrides and a default apply-to-all image time control.
+- Added global pause/resume controls and player-side sync refinements to reduce flicker.
+- Added an in-app password reset flow under Account.
+- Updated the admin UI with cleaner styling and muted symbolic panel icons.
+- Updated installers to detect the current machine LAN IP and pass it into Docker so the admin panel exposes a usable player URL for other devices on the network.

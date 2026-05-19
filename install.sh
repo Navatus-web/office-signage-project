@@ -7,6 +7,7 @@ MEDIA_DIR="${MEDIA_DIR:-./public/media}"
 SETTINGS_FILE="${SETTINGS_FILE:-./settings.json}"
 HTPASSWD_FILE="${HTPASSWD_FILE:-./admin.htpasswd}"
 ADMIN_USER="${ADMIN_USER:-admin}"
+RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE:-./.runtime.env}"
 
 echo "== $PROJECT_NAME installer =="
 
@@ -132,7 +133,7 @@ require_file "server.js"
 mkdir -p "$MEDIA_DIR"
 
 if [ ! -f "$SETTINGS_FILE" ]; then
-  printf '{ "imageIntervalMs": 7000, "imageDurations": {} }\n' > "$SETTINGS_FILE"
+  printf '{ "imageIntervalMs": 7000, "imageDurations": {}, "mediaOrder": [] }\n' > "$SETTINGS_FILE"
   echo "Created $SETTINGS_FILE"
 fi
 
@@ -151,6 +152,14 @@ export SETTINGS_FILE
 export HTPASSWD_FILE
 export ADMIN_USER
 
+LAN_IPS="$(local_ips | awk '!seen[$0]++')"
+PLAYER_HOST="$(printf '%s\n' "$LAN_IPS" | head -n 1)"
+
+cat > "$RUNTIME_ENV_FILE" <<EOF
+PLAYER_HOST=$PLAYER_HOST
+EOF
+echo "Wrote $RUNTIME_ENV_FILE"
+
 echo "Starting containers..."
 "${COMPOSE[@]}" up -d --build
 
@@ -159,7 +168,6 @@ echo "Done."
 echo "Admin:  http://localhost:$PORT/admin-login"
 echo "Player: http://localhost:$PORT/player"
 
-LAN_IPS="$(local_ips | awk '!seen[$0]++')"
 if [ -n "$LAN_IPS" ]; then
   echo ""
   echo "LAN URLs:"

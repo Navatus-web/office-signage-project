@@ -26,12 +26,14 @@ const HTPASSWD_FILE = path.join(__dirname, "admin.htpasswd");
 const DEFAULT_SETTINGS = {
   imageIntervalMs: 7000,
   imageDurations: {},
+  mediaOrder: [],
 };
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-me-in-prod");
 const CHOKIDAR_USEPOLLING = String(process.env.CHOKIDAR_USEPOLLING || "true") === "true";
 const CHOKIDAR_INTERVAL = Number(process.env.CHOKIDAR_INTERVAL || 500);
 const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
+const PLAYER_HOST = String(process.env.PLAYER_HOST || "").trim();
 
 // ----------------------------
 // Middleware
@@ -49,7 +51,10 @@ const upload = multer({
       cb(null, file.originalname);
     },
   }),
-  limits: { fileSize: 1024 * 1024 * 500 }, // 500MB max
+  limits: {
+    fileSize: 1024 * 1024 * 500,
+    files: 10,
+  }, // 500MB max, 10 files per upload
 });
 
 const sessionMiddleware = session({
@@ -129,6 +134,14 @@ function md5(input) {
   return crypto.createHash("md5").update(input).digest();
 }
 
+function createApr1Salt() {
+  return crypto
+    .randomBytes(6)
+    .toString("base64")
+    .replace(/[+/=]/g, ".")
+    .slice(0, 8);
+}
+
 function apr1(password, salt) {
   const magic = "$apr1$";
   const salt8 = salt.replace(/^\$apr1\$/, "").split("$")[0].slice(0, 8);
@@ -205,6 +218,12 @@ function initHtpasswd() {
   htpasswd = createHtpasswdAuth(HTPASSWD_FILE);
 }
 
+function saveHtpasswdPassword(password) {
+  const hash = apr1(password, createApr1Salt());
+  fs.writeFileSync(HTPASSWD_FILE, `${ADMIN_USER}:${hash}\n`, "utf8");
+  initHtpasswd();
+}
+
 initHtpasswd();
 
 // ----------------------------
@@ -220,6 +239,9 @@ function loadSettings() {
       settings = { ...DEFAULT_SETTINGS, ...parsed };
       if (!settings.imageDurations || typeof settings.imageDurations !== "object" || Array.isArray(settings.imageDurations)) {
         settings.imageDurations = {};
+      }
+      if (!Array.isArray(settings.mediaOrder)) {
+        settings.mediaOrder = [];
       }
     } else {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
@@ -410,14 +432,37 @@ function getImageDuration(name, fallback) {
   return fallback;
 }
 
+function sortByMediaOrder(a, b) {
+  const order = Array.isArray(settings.mediaOrder) ? settings.mediaOrder : [];
+  const indexA = order.indexOf(a);
+  const indexB = order.indexOf(b);
+
+  if (indexA !== -1 || indexB !== -1) {
+    if (indexA === -1) return 1;
+    if (indexB === -1) return -1;
+    return indexA - indexB;
+  }
+
+  return sortVideoFirst(a, b);
+}
+
+function getPlayableMediaNames() {
+  return fs
+    .readdirSync(MEDIA_DIR, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => entry.name)
+    .filter((name) => !isJunk(name))
+    .filter((name) => {
+      const ext = path.extname(name).toLowerCase();
+      return imageExt.has(ext) || videoExt.has(ext);
+    });
+}
+
 function buildPlaylist() {
   let files = [];
 
   try {
-    files = fs
-      .readdirSync(MEDIA_DIR, { withFileTypes: true })
-      .filter((entry) => entry.isFile())
-      .map((entry) => entry.name);
+    files = getPlayableMediaNames();
   } catch (err) {
     console.warn("⚠️ Could not read media directory:", err.message);
     return [];
@@ -426,12 +471,7 @@ function buildPlaylist() {
   const interval = Number(settings.imageIntervalMs) || DEFAULT_SETTINGS.imageIntervalMs;
 
   return files
-    .filter((name) => !isJunk(name))
-    .filter((name) => {
-      const ext = path.extname(name).toLowerCase();
-      return imageExt.has(ext) || videoExt.has(ext);
-    })
-    .sort(sortVideoFirst)
+    .sort(sortByMediaOrder)
     .map((name) => {
       const ext = path.extname(name).toLowerCase();
       const isVideo = videoExt.has(ext);
@@ -456,6 +496,9 @@ let syncState = {
   playlistVersion: 1,
   paused: false,
 };
+
+const playerStates = new Map();
+let latestPlayerState = null;
 
 function bumpSync(reason) {
   syncState.startedAt = Date.now();
@@ -497,6 +540,19 @@ app.get("/api/playback", requireAdmin, (req, res) => {
   res.json({ paused: syncState.paused });
 });
 
+app.get("/api/network", requireAdmin, (req, res) => {
+  const hostHeader = String(req.headers.host || "");
+  const port = hostHeader.includes(":")
+    ? hostHeader.split(":").pop()
+    : String(process.env.PORT || 3000);
+  const playerHost = PLAYER_HOST || req.hostname || "localhost";
+
+  res.json({
+    playerHost,
+    playerUrl: `${req.protocol}://${playerHost}:${port}/player`,
+  });
+});
+
 // ----------------------------
 // Settings API
 // ----------------------------
@@ -514,11 +570,34 @@ app.post("/api/settings", requireAdmin, (req, res) => {
   }
 
   settings.imageIntervalMs = Math.floor(interval);
+  settings.imageDurations = {};
   saveSettings();
 
   broadcastReloadAndSync("settings");
 
   res.json(settings);
+});
+
+app.post("/api/admin-password", requireAdmin, (req, res) => {
+  const password = String(req.body?.password || "");
+  const confirmPassword = String(req.body?.confirmPassword || "");
+
+  if (password.length < 4 || password.length > 64) {
+    return res.status(400).json({ error: "Password must be between 4 and 64 characters" });
+  }
+
+  if (password !== confirmPassword) {
+    return res.status(400).json({ error: "Passwords do not match" });
+  }
+
+  try {
+    saveHtpasswdPassword(password);
+  } catch (err) {
+    console.error("❌ Failed to update admin password:", err.message);
+    return res.status(500).json({ error: "Failed to update admin password" });
+  }
+
+  res.json({ success: true });
 });
 
 app.post("/api/media-duration", requireAdmin, (req, res) => {
@@ -566,18 +645,35 @@ app.post("/api/media-duration", requireAdmin, (req, res) => {
 // ----------------------------
 // File Upload API
 // ----------------------------
-app.post("/api/upload", requireAdmin, upload.single("file"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
+app.post("/api/upload", requireAdmin, upload.array("files", 10), (req, res) => {
+  const files = Array.isArray(req.files) ? req.files : [];
+
+  if (files.length === 0) {
+    return res.status(400).json({ error: "No files uploaded" });
   }
 
-  console.log(`📁 Uploaded: ${req.file.originalname}`);
+  if (Array.isArray(settings.mediaOrder) && settings.mediaOrder.length > 0) {
+    let orderChanged = false;
+
+    for (const file of files) {
+      if (!settings.mediaOrder.includes(file.originalname)) {
+        settings.mediaOrder.push(file.originalname);
+        orderChanged = true;
+      }
+    }
+
+    if (orderChanged) {
+      saveSettings();
+    }
+  }
+
+  console.log(`📁 Uploaded ${files.length} file${files.length === 1 ? "" : "s"}: ${files.map((file) => file.originalname).join(", ")}`);
   broadcastReloadAndSync("file");
 
   res.json({
     success: true,
-    filename: req.file.originalname,
-    size: req.file.size,
+    count: files.length,
+    filenames: files.map((file) => file.originalname),
   });
 });
 
@@ -601,13 +697,112 @@ app.get("/api/media", requireAdmin, (req, res) => {
           durationMs: type === "image" ? settings.imageDurations?.[entry.name] || null : null,
         };
       })
-      .sort((a, b) => sortVideoFirst(a.name, b.name));
+      .sort((a, b) => sortByMediaOrder(a.name, b.name));
 
     res.json({ files });
   } catch (err) {
     console.error("❌ Failed to read media folder:", err.message);
     res.status(500).json({ error: "Failed to read media folder" });
   }
+});
+
+app.post("/api/media-order", requireAdmin, (req, res) => {
+  const filenames = req.body?.filenames;
+
+  if (!Array.isArray(filenames)) {
+    return res.status(400).json({ error: "filenames must be an array" });
+  }
+
+  let playableNames = [];
+  try {
+    playableNames = getPlayableMediaNames();
+  } catch (err) {
+    console.error("❌ Failed to read media folder:", err.message);
+    return res.status(500).json({ error: "Failed to read media folder" });
+  }
+
+  const playableSet = new Set(playableNames);
+  const ordered = [];
+
+  for (const filename of filenames) {
+    const name = String(filename || "");
+
+    if (!name || name.includes("/") || name.includes("\\")) {
+      return res.status(400).json({ error: "Invalid filename in order" });
+    }
+
+    if (playableSet.has(name) && !ordered.includes(name)) {
+      ordered.push(name);
+    }
+  }
+
+  const remaining = playableNames
+    .filter((name) => !ordered.includes(name))
+    .sort(sortVideoFirst);
+
+  settings.mediaOrder = [...ordered, ...remaining];
+  saveSettings();
+  broadcastReloadAndSync("media-order");
+
+  res.json({
+    success: true,
+    mediaOrder: settings.mediaOrder,
+  });
+});
+
+app.delete("/api/media-order", requireAdmin, (req, res) => {
+  settings.mediaOrder = [];
+  saveSettings();
+  broadcastReloadAndSync("media-order-reset");
+
+  res.json({
+    success: true,
+    mediaOrder: settings.mediaOrder,
+  });
+});
+
+app.delete("/api/media/:filename", requireAdmin, (req, res) => {
+  const filename = String(req.params.filename || "");
+
+  if (!filename || filename.includes("/") || filename.includes("\\")) {
+    return res.status(400).json({ error: "Valid filename is required" });
+  }
+
+  const targetPath = path.resolve(MEDIA_DIR, filename);
+  const mediaRoot = path.resolve(MEDIA_DIR);
+
+  if (!targetPath.startsWith(`${mediaRoot}${path.sep}`)) {
+    return res.status(400).json({ error: "Invalid media path" });
+  }
+
+  try {
+    if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+      return res.status(404).json({ error: "Media file not found" });
+    }
+
+    fs.rmSync(targetPath, { force: true });
+
+    if (settings.imageDurations?.[filename]) {
+      delete settings.imageDurations[filename];
+    }
+
+    if (Array.isArray(settings.mediaOrder)) {
+      settings.mediaOrder = settings.mediaOrder.filter((name) => name !== filename);
+    }
+
+    saveSettings();
+  } catch (err) {
+    console.error("❌ Failed to remove media file:", err.message);
+    return res.status(500).json({ error: "Failed to remove media file" });
+  }
+
+  console.log(`🗑️ Removed media file: ${filename}`);
+  broadcastReloadAndSync("remove-media");
+
+  res.json({
+    success: true,
+    filename,
+  });
 });
 
 app.delete("/api/media", requireAdmin, (req, res) => {
@@ -623,6 +818,7 @@ app.delete("/api/media", requireAdmin, (req, res) => {
     }
 
     settings.imageDurations = {};
+    settings.mediaOrder = [];
     saveSettings();
   } catch (err) {
     console.error("❌ Failed to clear media folder:", err.message);
@@ -659,6 +855,9 @@ io.on("connection", (socket) => {
     paused: syncState.paused,
     syncState,
   });
+  if (latestPlayerState) {
+    socket.emit("player-state", latestPlayerState);
+  }
   broadcastClientCount();
 
   socket.on("reload", () => {
@@ -683,8 +882,32 @@ io.on("connection", (socket) => {
     setPaused(paused === true);
   });
 
+  socket.on("player-state", (state) => {
+    if (!state || typeof state !== "object" || typeof state.src !== "string") {
+      return;
+    }
+
+    const payload = {
+      socketId: socket.id,
+      state: {
+        type: state.type === "video" ? "video" : "image",
+        src: state.src,
+        paused: state.paused === true,
+        updatedAt: Date.now(),
+      },
+    };
+
+    playerStates.set(socket.id, payload);
+    latestPlayerState = payload;
+    io.emit("player-state", payload);
+  });
+
   socket.on("disconnect", () => {
     console.log(`🔴 Client disconnected: ${socket.id}`);
+    playerStates.delete(socket.id);
+    if (latestPlayerState?.socketId === socket.id) {
+      latestPlayerState = [...playerStates.values()].sort((a, b) => b.state.updatedAt - a.state.updatedAt)[0] || null;
+    }
     broadcastClientCount();
   });
 });
