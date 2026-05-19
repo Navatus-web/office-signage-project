@@ -6,6 +6,7 @@ const fs = require("fs");
 const crypto = require("crypto");
 const chokidar = require("chokidar");
 const session = require("express-session");
+const multer = require("multer");
 
 const app = express();
 const server = http.createServer(app);
@@ -36,6 +37,19 @@ const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
 // ----------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+
+// ----------------------------
+// File Upload
+// ----------------------------
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: MEDIA_DIR,
+    filename: (req, file, cb) => {
+      cb(null, file.originalname);
+    },
+  }),
+  limits: { fileSize: 1024 * 1024 * 500 }, // 500MB max
+});
 
 const sessionMiddleware = session({
   secret: SESSION_SECRET,
@@ -469,6 +483,24 @@ app.post("/api/settings", requireAdmin, (req, res) => {
   broadcastReloadAndSync("settings");
 
   res.json(settings);
+});
+
+// ----------------------------
+// File Upload API
+// ----------------------------
+app.post("/api/upload", requireAdmin, upload.single("file"), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: "No file uploaded" });
+  }
+
+  console.log(`📁 Uploaded: ${req.file.originalname}`);
+  broadcastReloadAndSync("file");
+
+  res.json({
+    success: true,
+    filename: req.file.originalname,
+    size: req.file.size,
+  });
 });
 
 // ----------------------------
