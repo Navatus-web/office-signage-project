@@ -2,11 +2,13 @@ services:
   signage:
     build: .
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:3000"
     restart: unless-stopped
     volumes:
-      - ./public/media:/app/public/media
-      - ./settings.json:/app/settings.json
+      - ${MEDIA_DIR:-./public/media}:/app/public/media
+      - ${SETTINGS_FILE:-./settings.json}:/app/settings.json
+      - ${HTPASSWD_FILE:-./admin.htpasswd}:/app/admin.htpasswd:ro
     environment:
+      - ADMIN_USER=${ADMIN_USER:-admin}
       - CHOKIDAR_USEPOLLING=true
       - CHOKIDAR_INTERVAL=500

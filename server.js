@@ -25,6 +25,7 @@ const HTPASSWD_FILE = path.join(__dirname, "admin.htpasswd");
 // ----------------------------
 const DEFAULT_SETTINGS = {
   imageIntervalMs: 7000,
+  imageDurations: {},
 };
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-me-in-prod");
@@ -217,6 +218,9 @@ function loadSettings() {
       const raw = fs.readFileSync(SETTINGS_FILE, "utf8");
       const parsed = JSON.parse(raw);
       settings = { ...DEFAULT_SETTINGS, ...parsed };
+      if (!settings.imageDurations || typeof settings.imageDurations !== "object" || Array.isArray(settings.imageDurations)) {
+        settings.imageDurations = {};
+      }
     } else {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
     }
@@ -241,6 +245,9 @@ loadSettings();
 // ----------------------------
 function requireAdmin(req, res, next) {
   if (req.session && req.session.isAdmin === true) return next();
+  if (req.path.startsWith("/api/")) {
+    return res.status(401).json({ error: "Admin login required" });
+  }
   return res.redirect("/admin-login");
 }
 
@@ -299,13 +306,15 @@ app.get("/admin-login", (req, res) => {
   <title>Admin Login</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    body{font-family:Arial;background:#111;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;margin:0}
-    .card{background:#1c1c1c;padding:24px;border-radius:12px;max-width:360px;width:92%}
-    h2{margin:0 0 14px 0;font-size:20px}
-    input{width:100%;padding:12px 10px;font-size:18px;letter-spacing:8px;text-align:center;border-radius:10px;border:1px solid #333;background:#0f0f0f;color:#fff;box-sizing:border-box}
-    button{width:100%;margin-top:12px;padding:12px;border:0;border-radius:10px;background:#2d7dff;color:#fff;font-size:16px;cursor:pointer}
-    button:hover{background:#1e5fd1}
-    .msg{margin-top:10px;opacity:.9;font-size:13px;min-height:18px}
+    *{box-sizing:border-box}
+    body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#111827 0%,#0f172a 100%);color:#e5edf6;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:24px}
+    .card{background:rgba(15,23,42,.92);border:1px solid rgba(148,163,184,.22);box-shadow:0 24px 60px rgba(2,6,23,.32);padding:28px;border-radius:10px;max-width:380px;width:100%}
+    h2{margin:0 0 18px 0;font-size:21px;font-weight:700;letter-spacing:.01em}
+    input{width:100%;padding:12px 12px;font-size:17px;border-radius:6px;border:1px solid rgba(148,163,184,.26);background:rgba(2,6,23,.3);color:#e5edf6;outline:none}
+    input:focus{border-color:#38bdf8;box-shadow:0 0 0 3px rgba(56,189,248,.15)}
+    button{width:100%;margin-top:14px;padding:12px;border:1px solid rgba(56,189,248,.52);border-radius:6px;background:rgba(14,165,233,.18);color:#bae6fd;font-size:15px;font-weight:700;cursor:pointer;text-transform:uppercase;letter-spacing:.05em}
+    button:hover{background:rgba(14,165,233,.28)}
+    .msg{margin-top:12px;color:#94a3b8;font-size:13px;min-height:18px}
   </style>
 </head>
 <body>
@@ -314,8 +323,7 @@ app.get("/admin-login", (req, res) => {
     <form method="POST" action="/admin-login">
       <input
         name="pin"
-        inputmode="numeric"
-        pattern="\\d{5,20}"
+        type="password"
         maxlength="20"
         placeholder="PIN / Password"
         autocomplete="current-password"
@@ -394,6 +402,14 @@ function sortVideoFirst(a, b) {
   });
 }
 
+function getImageDuration(name, fallback) {
+  const override = Number(settings.imageDurations?.[name]);
+  if (Number.isFinite(override) && override >= 1000 && override <= 600000) {
+    return Math.floor(override);
+  }
+  return fallback;
+}
+
 function buildPlaylist() {
   let files = [];
 
@@ -423,7 +439,7 @@ function buildPlaylist() {
       return {
         type: isVideo ? "video" : "image",
         src: `/media/${encodeURIComponent(name)}`,
-        duration: isVideo ? undefined : interval,
+        duration: isVideo ? undefined : getImageDuration(name, interval),
       };
     });
 }
@@ -438,6 +454,7 @@ app.get("/api/playlist", (req, res) => {
 let syncState = {
   startedAt: Date.now(),
   playlistVersion: 1,
+  paused: false,
 };
 
 function bumpSync(reason) {
@@ -450,6 +467,21 @@ function broadcastSync() {
   io.emit("sync", syncState);
 }
 
+function setPaused(paused) {
+  syncState.paused = paused;
+
+  if (!paused) {
+    bumpSync("resume");
+  }
+
+  console.log(paused ? "⏸️ Playback paused" : "▶️ Playback resumed");
+  io.emit("playback-state", {
+    paused: syncState.paused,
+    syncState,
+  });
+  broadcastSync();
+}
+
 function broadcastReloadAndSync(reason) {
   bumpSync(reason);
   console.log(`🔁 Broadcasting reload (${reason})`);
@@ -459,6 +491,10 @@ function broadcastReloadAndSync(reason) {
 
 app.get("/api/sync", (req, res) => {
   res.json(syncState);
+});
+
+app.get("/api/playback", requireAdmin, (req, res) => {
+  res.json({ paused: syncState.paused });
 });
 
 // ----------------------------
@@ -485,6 +521,48 @@ app.post("/api/settings", requireAdmin, (req, res) => {
   res.json(settings);
 });
 
+app.post("/api/media-duration", requireAdmin, (req, res) => {
+  const filename = String(req.body?.filename || "");
+  const durationSeconds = req.body?.durationSeconds;
+
+  if (!filename || filename.includes("/") || filename.includes("\\")) {
+    return res.status(400).json({ error: "Valid filename is required" });
+  }
+
+  const filePath = path.join(MEDIA_DIR, filename);
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return res.status(404).json({ error: "Media file not found" });
+  }
+
+  const ext = path.extname(filename).toLowerCase();
+  if (!imageExt.has(ext)) {
+    return res.status(400).json({ error: "Only images support custom durations" });
+  }
+
+  if (!settings.imageDurations || typeof settings.imageDurations !== "object") {
+    settings.imageDurations = {};
+  }
+
+  if (durationSeconds === null || durationSeconds === "" || typeof durationSeconds === "undefined") {
+    delete settings.imageDurations[filename];
+  } else {
+    const seconds = Number(durationSeconds);
+    if (!Number.isFinite(seconds) || seconds < 1 || seconds > 600) {
+      return res.status(400).json({ error: "Duration must be between 1 and 600 seconds" });
+    }
+    settings.imageDurations[filename] = Math.floor(seconds * 1000);
+  }
+
+  saveSettings();
+  broadcastReloadAndSync("media-duration");
+
+  res.json({
+    success: true,
+    filename,
+    durationMs: settings.imageDurations[filename] || null,
+  });
+});
+
 // ----------------------------
 // File Upload API
 // ----------------------------
@@ -503,6 +581,63 @@ app.post("/api/upload", requireAdmin, upload.single("file"), (req, res) => {
   });
 });
 
+app.get("/api/media", requireAdmin, (req, res) => {
+  try {
+    const files = fs
+      .readdirSync(MEDIA_DIR, { withFileTypes: true })
+      .filter((entry) => entry.isFile())
+      .filter((entry) => !isJunk(entry.name))
+      .map((entry) => {
+        const filePath = path.join(MEDIA_DIR, entry.name);
+        const stats = fs.statSync(filePath);
+        const ext = path.extname(entry.name).toLowerCase();
+        const type = videoExt.has(ext) ? "video" : imageExt.has(ext) ? "image" : "file";
+
+        return {
+          name: entry.name,
+          type,
+          size: stats.size,
+          modifiedAt: stats.mtime.toISOString(),
+          durationMs: type === "image" ? settings.imageDurations?.[entry.name] || null : null,
+        };
+      })
+      .sort((a, b) => sortVideoFirst(a.name, b.name));
+
+    res.json({ files });
+  } catch (err) {
+    console.error("❌ Failed to read media folder:", err.message);
+    res.status(500).json({ error: "Failed to read media folder" });
+  }
+});
+
+app.delete("/api/media", requireAdmin, (req, res) => {
+  let deletedCount = 0;
+
+  try {
+    const entries = fs.readdirSync(MEDIA_DIR, { withFileTypes: true });
+
+    for (const entry of entries) {
+      const targetPath = path.join(MEDIA_DIR, entry.name);
+      fs.rmSync(targetPath, { recursive: true, force: true });
+      deletedCount += 1;
+    }
+
+    settings.imageDurations = {};
+    saveSettings();
+  } catch (err) {
+    console.error("❌ Failed to clear media folder:", err.message);
+    return res.status(500).json({ error: "Failed to clear media folder" });
+  }
+
+  console.log(`🧹 Cleared media folder. Removed ${deletedCount} item${deletedCount === 1 ? "" : "s"}.`);
+  broadcastReloadAndSync("clear-media");
+
+  res.json({
+    success: true,
+    deletedCount,
+  });
+});
+
 // ----------------------------
 // Socket.IO auth + handlers
 // ----------------------------
@@ -510,11 +645,21 @@ io.use((socket, next) => {
   sessionMiddleware(socket.request, {}, next);
 });
 
+function broadcastClientCount() {
+  const count = io.of("/").sockets.size;
+  io.emit("client-count", count);
+}
+
 io.on("connection", (socket) => {
   console.log(`🟢 Client connected: ${socket.id}`);
 
   // Send current sync state to new clients
   socket.emit("sync", syncState);
+  socket.emit("playback-state", {
+    paused: syncState.paused,
+    syncState,
+  });
+  broadcastClientCount();
 
   socket.on("reload", () => {
     const isAdmin = socket.request?.session?.isAdmin === true;
@@ -527,8 +672,20 @@ io.on("connection", (socket) => {
     broadcastReloadAndSync("manual");
   });
 
+  socket.on("set-paused", (paused) => {
+    const isAdmin = socket.request?.session?.isAdmin === true;
+
+    if (!isAdmin) {
+      console.warn("❌ Blocked unauthorized pause toggle from", socket.id);
+      return;
+    }
+
+    setPaused(paused === true);
+  });
+
   socket.on("disconnect", () => {
     console.log(`🔴 Client disconnected: ${socket.id}`);
+    broadcastClientCount();
   });
 });
 

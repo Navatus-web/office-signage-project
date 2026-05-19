@@ -1,224 +1,614 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Office Signage Admin</title>
+  <title>Office Signage Admin Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
 
   <style>
+    :root {
+      --bg: #0f172a;
+      --surface: rgba(15, 23, 42, 0.88);
+      --surface-strong: rgba(17, 24, 39, 0.96);
+      --line: rgba(148, 163, 184, 0.22);
+      --line-strong: rgba(56, 189, 248, 0.38);
+      --text: #e5edf6;
+      --muted: #94a3b8;
+      --soft: #cbd5e1;
+      --accent: #38bdf8;
+      --accent-strong: #0ea5e9;
+      --success: #34d399;
+      --danger: #fb7185;
+      --danger-strong: #e11d48;
+    }
+
     * {
       box-sizing: border-box;
     }
 
-    body{
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 100%);
-      color:#fff;
-      margin:0;
-      padding:40px 20px;
+    body {
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: linear-gradient(180deg, #111827 0%, var(--bg) 42%, #111827 100%);
+      color: var(--text);
+      margin: 0;
+      padding: 0;
       min-height: 100vh;
     }
 
-    .container {
-      max-width: 900px;
-      margin: 0 auto;
+    .header {
+      background: rgba(15, 23, 42, 0.92);
+      border-bottom: 1px solid var(--line);
+      padding: 20px 40px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 12px 32px rgba(2, 6, 23, 0.28);
+      backdrop-filter: blur(14px);
     }
 
-    h1{
-      margin: 0 0 30px 0;
-      font-size: 32px;
+    .header-content {
+      max-width: 1400px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      font-size: 21px;
       font-weight: 700;
-      background: linear-gradient(120deg, #2d7dff, #00d4ff);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      letter-spacing: 0.2px;
+      color: var(--text);
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--success);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+
+    .client-count {
+      font-size: 12px;
+      color: var(--accent);
+      letter-spacing: 0.04em;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }
+
+    .panel-title {
+      font-size: 13px;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--soft);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-title::before {
+      content: '';
+      display: inline-block;
+      width: 3px;
+      height: 16px;
+      background: linear-gradient(180deg, var(--accent), var(--accent-strong));
     }
 
     .grid {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 20px;
-      margin-bottom: 30px;
+      grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+      gap: 30px;
+      margin-bottom: 40px;
     }
 
-    @media (max-width: 768px) {
-      .grid {
-        grid-template-columns: 1fr;
-      }
-    }
-
-    .card{
-      background: rgba(28, 28, 28, 0.8);
-      backdrop-filter: blur(10px);
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
       padding: 25px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(12px);
       transition: all 0.3s ease;
+      position: relative;
+      overflow: hidden;
     }
 
-    .card:hover {
-      border-color: rgba(45, 125, 255, 0.3);
-      background: rgba(28, 28, 28, 0.95);
+    .panel::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--accent), transparent);
+      opacity: 0;
+      transition: opacity 0.3s ease;
     }
 
-    .card h2 {
-      margin: 0 0 20px 0;
-      font-size: 18px;
-      font-weight: 600;
-      color: #00d4ff;
+    .panel:hover {
+      border-color: var(--line-strong);
+      background: var(--surface-strong);
+      box-shadow: 0 18px 38px rgba(2, 6, 23, 0.22);
     }
 
-    label{
+    .panel:hover::before {
+      opacity: 1;
+    }
+
+    .panel-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      padding-bottom: 15px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .panel-icon {
+      font-size: 24px;
+      opacity: 0.9;
+    }
+
+    .panel-name {
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    label {
       display: block;
       margin-top: 15px;
       margin-bottom: 8px;
-      font-size: 14px;
-      opacity: 0.9;
-      font-weight: 500;
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 700;
     }
 
     input[type="number"],
-    input[type="file"] {
+    input[type="file"],
+    input[type="text"] {
       width: 100%;
-      padding: 12px;
-      font-size: 14px;
-      border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.15);
-      background: rgba(15, 15, 15, 0.7);
-      color: #fff;
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      border-radius: 4px;
+      border: 1px solid var(--line);
+      background: rgba(2, 6, 23, 0.28);
+      color: var(--text);
       margin-top: 5px;
       transition: all 0.3s ease;
     }
 
     input[type="number"]:focus,
-    input[type="file"]:focus {
+    input[type="file"]:focus,
+    input[type="text"]:focus {
       outline: none;
-      border-color: #2d7dff;
-      background: rgba(15, 15, 15, 0.9);
-      box-shadow: 0 0 0 3px rgba(45, 125, 255, 0.1);
+      border-color: var(--accent);
+      background: rgba(2, 6, 23, 0.42);
+      box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15);
+    }
+
+    input[readonly] {
+      cursor: text;
+      color: var(--accent);
+    }
+
+    .copy-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: center;
+      margin-top: 5px;
     }
 
     input[type="file"]::file-selector-button {
-      padding: 8px 16px;
-      background: #2d7dff;
+      padding: 8px 14px;
+      background: var(--accent-strong);
       border: none;
-      border-radius: 6px;
+      border-radius: 4px;
       color: white;
       cursor: pointer;
       margin-right: 10px;
-      font-weight: 500;
-      transition: background 0.3s ease;
+      font-weight: 600;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      transition: all 0.3s ease;
     }
 
     input[type="file"]::file-selector-button:hover {
-      background: #1e5fd1;
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(14, 165, 233, 0.22);
     }
 
     .button-group {
       display: flex;
       gap: 10px;
-      margin-top: 15px;
+      margin-top: 20px;
       flex-wrap: wrap;
     }
 
-    button{
-      padding: 12px 20px;
-      font-size: 14px;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      background: #2d7dff;
-      color: white;
-      cursor: pointer;
-      transition: all 0.3s ease;
-      flex: 1;
-      min-width: 120px;
+    .compact-actions {
+      justify-content: flex-start;
     }
 
-    button:hover{
-      background: #1e5fd1;
+    button {
+      padding: 10px 16px;
+      font-size: 12px;
+      font-family: inherit;
+      font-weight: 600;
+      border: 1px solid rgba(56, 189, 248, 0.52);
+      border-radius: 4px;
+      background: rgba(14, 165, 233, 0.12);
+      color: var(--accent);
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      flex: 1;
+      min-width: 100px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .compact-actions button,
+    button.compact {
+      flex: 0 0 auto;
+      min-width: 170px;
+      max-width: 240px;
+    }
+
+    button:hover {
+      border-color: var(--accent);
+      color: #e0f2fe;
+      background: rgba(14, 165, 233, 0.22);
+      box-shadow: 0 12px 24px rgba(2, 6, 23, 0.2);
       transform: translateY(-2px);
-      box-shadow: 0 8px 16px rgba(45, 125, 255, 0.3);
     }
 
     button:active {
       transform: translateY(0);
     }
 
-    .danger{
-      background: #ff3b3b;
-      flex: none;
-      width: 100%;
+    .danger {
+      border-color: rgba(251, 113, 133, 0.55);
+      color: var(--danger);
+      background: rgba(225, 29, 72, 0.12);
     }
 
-    .danger:hover{
-      background: #c62828;
-      box-shadow: 0 8px 16px rgba(255, 59, 59, 0.3);
+    .danger:hover {
+      border-color: var(--danger);
+      color: #ffe4e6;
+      background: rgba(225, 29, 72, 0.22);
+      box-shadow: 0 12px 24px rgba(127, 29, 29, 0.18);
     }
 
-    .status{
+    .status {
       margin-top: 15px;
       padding: 12px;
-      border-radius: 8px;
-      font-size: 14px;
+      border-radius: 4px;
+      font-size: 12px;
       opacity: 0.95;
       display: none;
+      border-left: 3px solid;
+      letter-spacing: 0.01em;
     }
 
     .status.show {
       display: block;
+      animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 0.95;
+        transform: translateY(0);
+      }
     }
 
     .status.success {
-      background: rgba(76, 175, 80, 0.2);
-      border-left: 3px solid #4caf50;
-      color: #90ee90;
+      background: rgba(16, 185, 129, 0.12);
+      border-left-color: var(--success);
+      color: #a7f3d0;
     }
 
     .status.error {
-      background: rgba(255, 59, 59, 0.2);
-      border-left: 3px solid #ff3b3b;
-      color: #ff8888;
+      background: rgba(225, 29, 72, 0.12);
+      border-left-color: var(--danger);
+      color: #fecdd3;
     }
+
+    .full-width {
+      grid-column: 1 / -1;
+    }
+
+    .media-browser {
+      margin-top: 24px;
+      border-top: 1px solid var(--line);
+      padding-top: 18px;
+    }
+
+    .media-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .media-heading {
+      font-size: 12px;
+      color: var(--soft);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      font-weight: 600;
+    }
+
+    .media-count {
+      color: var(--accent);
+      font-size: 11px;
+      opacity: 0.9;
+      margin-left: 8px;
+    }
+
+    .media-list {
+      display: grid;
+      gap: 8px;
+      max-height: 260px;
+      overflow-y: auto;
+      padding-right: 4px;
+    }
+
+    .media-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto minmax(190px, auto);
+      gap: 12px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 4px;
+      background: rgba(2, 6, 23, 0.26);
+    }
+
+    .media-name {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 12px;
+      color: var(--text);
+    }
+
+    .media-meta {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      opacity: 0.9;
+    }
+
+    .media-type {
+      min-width: 54px;
+      padding: 4px 7px;
+      border-radius: 4px;
+      text-align: center;
+      font-size: 10px;
+      line-height: 1;
+      text-transform: uppercase;
+      color: #a7f3d0;
+      border: 1px solid rgba(52, 211, 153, 0.3);
+      background: rgba(16, 185, 129, 0.1);
+    }
+
+    .media-type.video {
+      color: #bae6fd;
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(14, 165, 233, 0.1);
+    }
+
+    .duration-control {
+      display: grid;
+      grid-template-columns: 76px auto auto;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .duration-control input {
+      margin-top: 0;
+      padding: 7px 8px;
+      font-size: 11px;
+      text-align: right;
+    }
+
+    .duration-control button {
+      min-width: 54px;
+      padding: 7px 9px;
+      font-size: 10px;
+      flex: 0 0 auto;
+    }
+
+    .duration-note {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+      opacity: 0.85;
+    }
+
+    .media-empty {
+      padding: 14px 12px;
+      border: 1px dashed rgba(148, 163, 184, 0.3);
+      border-radius: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      opacity: 0.85;
+    }
+
+    .logout-panel form {
+      margin: 0;
+    }
+
+    .logout-panel button {
+      width: auto;
+    }
+
+    @media (max-width: 520px) {
+      .header {
+        padding: 16px 20px;
+      }
+
+      .header-content,
+      .media-toolbar {
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+
+      .media-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+      }
+
+      .copy-row {
+        grid-template-columns: 1fr;
+      }
+
+      .media-meta {
+        display: none;
+      }
+
+      .duration-control,
+      .duration-note {
+        grid-column: 1 / -1;
+      }
+
+      .compact-actions button,
+      button.compact {
+        width: 100%;
+        max-width: none;
+      }
+    }
+
   </style>
 </head>
 
 <body>
 
-<div class="container">
-  <h1>Office Signage Admin</h1>
+<div class="header">
+  <div class="header-content">
+    <div class="logo">⬤ Signage Control</div>
+    <div class="status-indicator">
+      <span class="status-dot"></span>
+      <span>System Online</span>
+      <span class="client-count" id="clientCount">0 devices</span>
+    </div>
+  </div>
+</div>
 
+<div class="container">
+  <div class="panel-title">▌ Playback Management</div>
+  
   <div class="grid">
-    <div class="card">
-      <h2>⏱️ Playback Settings</h2>
-      <label>Image Interval (seconds)</label>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">⏱️</span>
+        <span class="panel-name">Interval Control</span>
+      </div>
+      <label>Image Display Duration (seconds)</label>
       <input id="intervalInput" type="number" min="1" max="600">
       <div class="button-group">
-        <button onclick="saveInterval()">Save Interval</button>
+        <button onclick="saveInterval()">Apply</button>
       </div>
       <div class="status" id="settingsStatus"></div>
+      <div class="media-browser">
+        <div class="media-toolbar">
+          <div class="media-heading">
+            Media Folder
+            <span class="media-count" id="mediaCount">0 items</span>
+          </div>
+          <button class="compact" onclick="loadMediaFiles()">Refresh List</button>
+        </div>
+        <div class="media-list" id="mediaList">
+          <div class="media-empty">Loading media folder...</div>
+        </div>
+      </div>
     </div>
 
-    <div class="card">
-      <h2>📤 Upload Media</h2>
-      <label>Select file to upload</label>
+    <div class="panel">
+      <div class="panel-header">
+        <span class="panel-icon">📤</span>
+        <span class="panel-name">Media Upload</span>
+      </div>
+      <label>Select Media File (Image or Video)</label>
       <input id="fileInput" type="file" accept="image/*,video/*">
       <div class="button-group">
         <button onclick="uploadFile()">Upload</button>
+        <button class="danger" onclick="confirmClearMedia()">Clear Media Folder</button>
       </div>
       <div class="status" id="uploadStatus"></div>
     </div>
   </div>
 
-  <div class="card" style="margin-bottom: 30px;">
-    <h2>📡 Screen Control</h2>
-    <button onclick="reloadScreens()" style="flex: none; width: 100%;">Reload All Screens</button>
-    <div class="status" id="reloadStatus"></div>
+  <div class="panel-title">▌ Screen Operations</div>
+
+  <div class="grid">
+    <div class="panel full-width">
+      <div class="panel-header">
+        <span class="panel-icon">📡</span>
+        <span class="panel-name">Broadcast Control</span>
+      </div>
+      <label>Player URL</label>
+      <div class="copy-row">
+        <input id="playerUrlInput" type="text" readonly>
+        <button class="compact" onclick="copyPlayerUrl()">Copy Player URL</button>
+      </div>
+      <div class="button-group compact-actions">
+        <button id="pauseButton" onclick="togglePauseScreens()">Pause All Displays</button>
+        <button onclick="reloadScreens()">Reload All Displays</button>
+      </div>
+      <div class="status" id="reloadStatus"></div>
+    </div>
   </div>
 
-  <div class="card">
-    <form method="POST" action="/admin-logout" style="margin: 0;">
-      <button class="danger">Logout</button>
-    </form>
+  <div class="panel-title">▌ Account</div>
+
+  <div class="grid">
+    <div class="panel logout-panel full-width">
+      <form method="POST" action="/admin-logout" style="margin: 0;">
+        <div class="button-group compact-actions" style="margin-top: 0;">
+          <button class="danger">Logout</button>
+        </div>
+      </form>
+    </div>
   </div>
 </div>
 
@@ -227,6 +617,222 @@
 <script>
 
 const socket = io();
+let screensPaused = false;
+
+function showStatus(status, type, message){
+  status.classList.remove("success", "error");
+  status.classList.add("show", type);
+  status.innerText = message;
+  setTimeout(() => status.classList.remove("show"), 4000);
+}
+
+function setPlayerUrl(){
+  const input = document.getElementById("playerUrlInput");
+  input.value = `${window.location.origin}/player`;
+}
+
+function updatePauseButton(){
+  const button = document.getElementById("pauseButton");
+  button.innerText = screensPaused ? "Resume All Displays" : "Pause All Displays";
+  button.classList.toggle("danger", screensPaused);
+}
+
+async function loadPlaybackState(){
+  try {
+    const res = await fetch("/api/playback");
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    if(res.ok){
+      const data = await res.json();
+      screensPaused = data.paused === true;
+      updatePauseButton();
+    }
+  } catch (e) {
+    updatePauseButton();
+  }
+}
+
+async function copyPlayerUrl(){
+  const input = document.getElementById("playerUrlInput");
+  const status = document.getElementById("reloadStatus");
+  input.select();
+  input.setSelectionRange(0, input.value.length);
+
+  try {
+    if(navigator.clipboard && window.isSecureContext){
+      await navigator.clipboard.writeText(input.value);
+    }
+    else {
+      document.execCommand("copy");
+    }
+
+    showStatus(status, "success", "✓ Player URL copied");
+  } catch (e) {
+    showStatus(status, "error", "✗ Could not copy Player URL");
+  }
+}
+
+function formatBytes(bytes){
+  const units = ["B", "KB", "MB", "GB"];
+  let size = Number(bytes) || 0;
+  let unitIndex = 0;
+
+  while(size >= 1024 && unitIndex < units.length - 1){
+    size /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${size >= 10 || unitIndex === 0 ? Math.round(size) : size.toFixed(1)} ${units[unitIndex]}`;
+}
+
+async function saveMediaDuration(filename, value){
+  const status = document.getElementById("uploadStatus");
+
+  try {
+    const res = await fetch("/api/media-duration", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        filename,
+        durationSeconds: value
+      })
+    });
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", value ? `✓ Duration saved for ${filename}` : `✓ Duration reset for ${filename}`);
+      loadMediaFiles();
+    }
+    else {
+      showStatus(status, "error", `✗ Duration failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Duration error: " + e.message);
+  }
+}
+
+function renderMediaFiles(files){
+  const list = document.getElementById("mediaList");
+  const count = document.getElementById("mediaCount");
+  count.innerText = `${files.length} item${files.length === 1 ? "" : "s"}`;
+  list.innerHTML = "";
+
+  if(files.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "media-empty";
+    empty.innerText = "No media files found.";
+    list.appendChild(empty);
+    return;
+  }
+
+  files.forEach((file) => {
+    const row = document.createElement("div");
+    row.className = "media-row";
+
+    const name = document.createElement("div");
+    name.className = "media-name";
+    name.title = file.name;
+    name.innerText = file.name;
+
+    const meta = document.createElement("div");
+    meta.className = "media-meta";
+    meta.innerText = formatBytes(file.size);
+
+    const type = document.createElement("div");
+    type.className = `media-type ${file.type}`;
+    type.innerText = file.type;
+
+    const duration = document.createElement("div");
+    if(file.type === "image"){
+      duration.className = "duration-control";
+
+      const input = document.createElement("input");
+      input.type = "number";
+      input.min = "1";
+      input.max = "600";
+      input.placeholder = "Default";
+      input.value = file.durationMs ? String(Math.round(file.durationMs / 1000)) : "";
+      input.title = "Image duration in seconds. Blank uses the global interval.";
+
+      const save = document.createElement("button");
+      save.type = "button";
+      save.innerText = "Save";
+      save.onclick = () => saveMediaDuration(file.name, input.value);
+
+      const reset = document.createElement("button");
+      reset.type = "button";
+      reset.innerText = "Reset";
+      reset.onclick = () => saveMediaDuration(file.name, null);
+
+      duration.appendChild(input);
+      duration.appendChild(save);
+      duration.appendChild(reset);
+    }
+    else {
+      duration.className = "duration-note";
+      duration.innerText = "Full video";
+    }
+
+    row.appendChild(name);
+    row.appendChild(meta);
+    row.appendChild(type);
+    row.appendChild(duration);
+    list.appendChild(row);
+  });
+}
+
+async function loadMediaFiles(){
+  const list = document.getElementById("mediaList");
+  const count = document.getElementById("mediaCount");
+  list.innerHTML = "";
+
+  const loading = document.createElement("div");
+  loading.className = "media-empty";
+  loading.innerText = "Loading media folder...";
+  list.appendChild(loading);
+
+  try {
+    const res = await fetch("/api/media");
+
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+
+    const data = await res.json();
+
+    if(res.ok){
+      renderMediaFiles(data.files || []);
+    }
+    else {
+      count.innerText = "Unavailable";
+      list.innerHTML = "";
+      const error = document.createElement("div");
+      error.className = "media-empty";
+      error.innerText = `Failed to load media: ${data.error}`;
+      list.appendChild(error);
+    }
+  } catch (e) {
+    count.innerText = "Unavailable";
+    list.innerHTML = "";
+    const error = document.createElement("div");
+    error.className = "media-empty";
+    error.innerText = `Failed to load media: ${e.message}`;
+    list.appendChild(error);
+  }
+}
 
 async function loadSettings(){
   const res = await fetch("/api/settings");
@@ -256,14 +862,10 @@ async function saveInterval(){
 
   const status = document.getElementById("settingsStatus");
   if(res.ok){
-    status.classList.add("show", "success");
-    status.innerText = "✔ Interval saved. Screens reloading...";
-    setTimeout(() => status.classList.remove("show"), 3000);
+    showStatus(status, "success", "✓ Interval updated. Synchronizing screens...");
   }
   else{
-    status.classList.add("show", "error");
-    status.innerText = "❌ Failed to update interval";
-    setTimeout(() => status.classList.remove("show"), 3000);
+    showStatus(status, "error", "✗ Failed to update interval");
   }
 }
 
@@ -273,9 +875,7 @@ async function uploadFile(){
   const status = document.getElementById("uploadStatus");
 
   if(!file){
-    status.classList.add("show", "error");
-    status.innerText = "❌ Please select a file";
-    setTimeout(() => status.classList.remove("show"), 3000);
+    showStatus(status, "error", "✗ No file selected");
     return;
   }
 
@@ -290,33 +890,79 @@ async function uploadFile(){
 
     if(res.ok){
       const data = await res.json();
-      status.classList.add("show", "success");
-      status.innerText = `✔ Uploaded: ${data.filename}`;
+      showStatus(status, "success", `✓ Uploaded: ${data.filename}`);
       fileInput.value = "";
-      setTimeout(() => status.classList.remove("show"), 3000);
+      loadMediaFiles();
     }
     else {
       const err = await res.json();
-      status.classList.add("show", "error");
-      status.innerText = `❌ Upload failed: ${err.error}`;
-      setTimeout(() => status.classList.remove("show"), 3000);
+      showStatus(status, "error", `✗ Upload failed: ${err.error}`);
     }
   } catch (e) {
-    status.classList.add("show", "error");
-    status.innerText = "❌ Upload error: " + e.message;
-    setTimeout(() => status.classList.remove("show"), 3000);
+    showStatus(status, "error", "✗ Upload error: " + e.message);
+  }
+}
+
+async function confirmClearMedia(){
+  const status = document.getElementById("uploadStatus");
+  const confirmed = window.confirm("Clear every file from the media folder? This cannot be undone.");
+
+  if(!confirmed){
+    return;
+  }
+
+  status.classList.remove("success", "error");
+  status.classList.add("show");
+  status.innerText = "Clearing media folder...";
+
+  try {
+    const res = await fetch("/api/media", {
+      method: "DELETE"
+    });
+
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", `✓ Media folder cleared. Removed ${data.deletedCount} item${data.deletedCount === 1 ? "" : "s"}.`);
+      document.getElementById("fileInput").value = "";
+      loadMediaFiles();
+    }
+    else {
+      showStatus(status, "error", `✗ Clear failed: ${data.error}`);
+    }
+  } catch (e) {
+    showStatus(status, "error", "✗ Clear error: " + e.message);
   }
 }
 
 function reloadScreens(){
   socket.emit("reload");
   const status = document.getElementById("reloadStatus");
-  status.classList.add("show", "success");
-  status.innerText = "📡 Reload signal sent to all screens";
-  setTimeout(() => status.classList.remove("show"), 3000);
+  showStatus(status, "success", "✓ Reload signal broadcast to all displays");
 }
 
+function togglePauseScreens(){
+  screensPaused = !screensPaused;
+  socket.emit("set-paused", screensPaused);
+  updatePauseButton();
+
+  const status = document.getElementById("reloadStatus");
+  showStatus(status, "success", screensPaused ? "✓ Displays paused" : "✓ Displays resumed");
+}
+
+socket.on("client-count", (count) => {
+  document.getElementById("clientCount").innerText = `${count} device${count === 1 ? "" : "s"} connected`;
+});
+
+socket.on("playback-state", ({ paused }) => {
+  screensPaused = paused === true;
+  updatePauseButton();
+});
+
 loadSettings();
+loadMediaFiles();
+setPlayerUrl();
+loadPlaybackState();
 
 </script>
 

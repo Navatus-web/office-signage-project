@@ -28,6 +28,7 @@
     let nextTimer = null;
     let currentNode = null;
     let currentKind = null; // "image" | "video" | null
+    let isPaused = false;
 
     async function fetchPlaylist() {
       const res = await fetch("/api/playlist", { cache: "no-store" });
@@ -44,6 +45,26 @@
     function clearTimers() {
       if (nextTimer) clearTimeout(nextTimer);
       nextTimer = null;
+    }
+
+    function pausePlayback() {
+      isPaused = true;
+      clearTimers();
+      if (currentKind === "video") {
+        currentNode?.pause?.();
+      }
+    }
+
+    function resumePlayback() {
+      if (!isPaused) return;
+      isPaused = false;
+      playFromSync();
+    }
+
+    function renderPausedFromSync() {
+      isPaused = false;
+      playFromSync();
+      pausePlayback();
     }
 
     function cleanupCurrentNode() {
@@ -149,6 +170,7 @@
     }
 
     function advanceSequentially() {
+      if (isPaused) return;
       if (!playlist.length) return showEmpty();
       currentIndex = (currentIndex + 1) % playlist.length;
       playSequential(currentIndex);
@@ -156,6 +178,8 @@
 
     function playSequential(i) {
       clearTimers();
+
+      if (isPaused) return;
 
       if (!playlist.length) return showEmpty();
 
@@ -194,6 +218,8 @@
 
     function playFromSync() {
       clearTimers();
+
+      if (isPaused) return;
 
       if (!Array.isArray(playlist) || playlist.length === 0) {
         return showEmpty();
@@ -237,18 +263,34 @@
 
     async function init() {
       await Promise.all([fetchPlaylist(), fetchSync()]);
+      isPaused = syncState?.paused === true;
+      if (isPaused) {
+        renderPausedFromSync();
+        return;
+      }
       playFromSync();
     }
 
     // Media/library changed: do a full re-fetch and re-sync
     socket.on("reload", async () => {
       await Promise.all([fetchPlaylist(), fetchSync()]);
+      isPaused = syncState?.paused === true;
+      if (isPaused) {
+        renderPausedFromSync();
+        return;
+      }
       playFromSync();
     });
 
     // Soft sync update: store latest sync state, but DO NOT restart videos constantly
     socket.on("sync", (state) => {
       syncState = state;
+      isPaused = syncState?.paused === true;
+
+      if (isPaused) {
+        pausePlayback();
+        return;
+      }
 
       // Optional gentle correction:
       // only re-sync while currently showing an image
@@ -257,6 +299,17 @@
         clearTimers();
         playFromSync();
       }
+    });
+
+    socket.on("playback-state", ({ paused, syncState: nextSyncState }) => {
+      if (nextSyncState) syncState = nextSyncState;
+
+      if (paused) {
+        pausePlayback();
+        return;
+      }
+
+      resumePlayback();
     });
 
     init();
