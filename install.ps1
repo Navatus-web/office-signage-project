@@ -124,14 +124,27 @@ process.stdout.write(apr1(password, salt));
   $PreviousPassword = $env:ADMIN_PASSWORD
   $env:ADMIN_PASSWORD = $Password
   try {
-    $Hash = docker run --rm -e ADMIN_PASSWORD node:20-alpine node -e $NodeScript
+    $TempFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), ([System.IO.Path]::GetRandomFileName() + ".js"))
+    [System.IO.File]::WriteAllText($TempFile, $NodeScript, [System.Text.Encoding]::UTF8)
+    $NodeCmd = Get-Command node -ErrorAction SilentlyContinue
+    if ($NodeCmd) {
+      $Hash = & node $TempFile 2>$null
+      $Last = $LASTEXITCODE
+    }
+    else {
+      $Hash = docker run --rm -e ADMIN_PASSWORD -v "$($TempFile):/hash-password.js:ro" node:20-alpine node /hash-password.js
+      $Last = $LASTEXITCODE
+    }
+    Remove-Item -Force $TempFile -ErrorAction SilentlyContinue
+    $env:ADMIN_PASSWORD = $PreviousPassword
+    $LASTEXITCODE = $Last
   }
   finally {
     $env:ADMIN_PASSWORD = $PreviousPassword
   }
 
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Hash)) {
-    Die "Failed to generate admin password hash with Docker."
+    Die "Failed to generate admin password hash with Node.js or Docker."
   }
 
   "$AdminUser`:$Hash" | Out-File -Encoding ascii $HtpasswdFile
