@@ -9,7 +9,7 @@ services:
     volumes:
       - ${MEDIA_DIR:-./public/media}:/app/public/media
       - ${SETTINGS_FILE:-./settings.json}:/app/settings.json
-      - ${HTPASSWD_FILE:-./admin.htpasswd}:/app/admin.htpasswd:ro
+      - ${HTPASSWD_FILE:-./admin.htpasswd}:/app/admin.htpasswd
     environment:
       - ADMIN_USER=${ADMIN_USER:-admin}
       - CHOKIDAR_USEPOLLING=true

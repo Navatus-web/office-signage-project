@@ -498,6 +498,7 @@ let syncState = {
 };
 
 const playerStates = new Map();
+const playerSockets = new Set();
 let latestPlayerState = null;
 
 function bumpSync(reason) {
@@ -842,7 +843,7 @@ io.use((socket, next) => {
 });
 
 function broadcastClientCount() {
-  const count = io.of("/").sockets.size;
+  const count = playerSockets.size;
   io.emit("client-count", count);
 }
 
@@ -859,6 +860,13 @@ io.on("connection", (socket) => {
     socket.emit("player-state", latestPlayerState);
   }
   broadcastClientCount();
+
+  socket.on("register-player", () => {
+    if (!playerSockets.has(socket.id)) {
+      playerSockets.add(socket.id);
+      broadcastClientCount();
+    }
+  });
 
   socket.on("reload", () => {
     const isAdmin = socket.request?.session?.isAdmin === true;
@@ -887,6 +895,11 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (!playerSockets.has(socket.id)) {
+      playerSockets.add(socket.id);
+      broadcastClientCount();
+    }
+
     const payload = {
       socketId: socket.id,
       state: {
@@ -904,6 +917,7 @@ io.on("connection", (socket) => {
 
   socket.on("disconnect", () => {
     console.log(`🔴 Client disconnected: ${socket.id}`);
+    playerSockets.delete(socket.id);
     playerStates.delete(socket.id);
     if (latestPlayerState?.socketId === socket.id) {
       latestPlayerState = [...playerStates.values()].sort((a, b) => b.state.updatedAt - a.state.updatedAt)[0] || null;
