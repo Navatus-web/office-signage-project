@@ -151,6 +151,28 @@ process.stdout.write(apr1(password, salt));
   Write-Host "Created $HtpasswdFile"
 }
 
+function Get-RuntimeEnvValue($Key) {
+  if (-not (Test-Path $RuntimeEnvFile)) { return "" }
+
+  $Line = Get-Content $RuntimeEnvFile |
+    Where-Object { $_ -like "$Key=*" } |
+    Select-Object -Last 1
+
+  if ([string]::IsNullOrWhiteSpace($Line)) { return "" }
+  return $Line.Substring($Key.Length + 1)
+}
+
+function New-SessionSecret {
+  $Existing = Get-RuntimeEnvValue "SESSION_SECRET"
+  if (-not [string]::IsNullOrWhiteSpace($Existing)) { return $Existing }
+
+  if (-not [string]::IsNullOrWhiteSpace($env:SESSION_SECRET)) { return $env:SESSION_SECRET }
+
+  $Bytes = New-Object byte[] 32
+  [System.Security.Cryptography.RandomNumberGenerator]::Fill($Bytes)
+  return ([System.BitConverter]::ToString($Bytes) -replace "-", "").ToLowerInvariant()
+}
+
 $Docker = Get-Command docker -ErrorAction SilentlyContinue
 if (-not $Docker) { Die "Docker not found. Install Docker Desktop for Windows." }
 
@@ -199,7 +221,11 @@ $env:ADMIN_USER = $AdminUser
 
 $LocalIps = Get-LocalIPv4Addresses
 $PlayerHost = if ($LocalIps) { $LocalIps | Select-Object -First 1 } else { "" }
-"PLAYER_HOST=$PlayerHost" | Out-File -Encoding ascii $RuntimeEnvFile
+$SessionSecret = New-SessionSecret
+@(
+  "PLAYER_HOST=$PlayerHost"
+  "SESSION_SECRET=$SessionSecret"
+) | Out-File -Encoding ascii $RuntimeEnvFile
 Write-Host "Wrote $RuntimeEnvFile"
 
 Write-Host "Starting containers..."

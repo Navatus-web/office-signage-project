@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node --test"
+    "test": "node --check server.js && node --test"
   },
   "dependencies": {
     "chokidar": "^5.0.0",

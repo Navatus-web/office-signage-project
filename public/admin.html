@@ -1006,6 +1006,37 @@
 <script>
 
 const socket = io();
+const nativeFetch = window.fetch.bind(window);
+let csrfTokenPromise = null;
+
+function getCsrfToken(){
+  if(!csrfTokenPromise){
+    csrfTokenPromise = nativeFetch("/api/csrf-token", { cache: "no-store" })
+      .then((res) => {
+        if(res.status === 401){
+          window.location = "/admin-login";
+          return {};
+        }
+        return res.json();
+      })
+      .then((data) => data?.csrfToken || "");
+  }
+
+  return csrfTokenPromise;
+}
+
+window.fetch = async (input, init = {}) => {
+  const method = String(init.method || "GET").toUpperCase();
+
+  if(!["GET", "HEAD", "OPTIONS"].includes(method)){
+    const headers = new Headers(init.headers || {});
+    headers.set("X-CSRF-Token", await getCsrfToken());
+    init = { ...init, headers };
+  }
+
+  return nativeFetch(input, init);
+};
+
 let screensPaused = false;
 let previewPlaylist = [];
 let previewSyncState = null;

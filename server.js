@@ -38,6 +38,15 @@ const CHOKIDAR_USEPOLLING = String(process.env.CHOKIDAR_USEPOLLING || "true") ==
 const CHOKIDAR_INTERVAL = Number(process.env.CHOKIDAR_INTERVAL || 500);
 const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
 const PLAYER_HOST = String(process.env.PLAYER_HOST || "").trim();
+const DEFAULT_SESSION_SECRET = "change-me-in-prod";
+const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter(Boolean);
+
+if (SESSION_SECRET === DEFAULT_SESSION_SECRET) {
+  console.warn("WARNING: SESSION_SECRET is using the development fallback. Run the installer or set SESSION_SECRET.");
+}
 
 function isPrivateLanIpv4(address) {
   if (!address || address === "127.0.0.1") return false;
@@ -94,6 +103,14 @@ function getAdvertisedHost(req) {
 // ----------------------------
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
+app.disable("x-powered-by");
+
+app.use((req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("Referrer-Policy", "same-origin");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  next();
+});
 
 // ----------------------------
 // File Upload
@@ -102,9 +119,19 @@ const upload = multer({
   storage: multer.diskStorage({
     destination: MEDIA_DIR,
     filename: (req, file, cb) => {
-      cb(null, file.originalname);
+      cb(null, uniqueMediaFilename(file.originalname));
     },
   }),
+  fileFilter: (req, file, cb) => {
+    const filename = sanitizeMediaFilename(file.originalname);
+    const ext = path.extname(filename).toLowerCase();
+
+    if (!imageExt.has(ext) && !videoExt.has(ext)) {
+      return cb(new Error("Only image and video files are allowed"));
+    }
+
+    return cb(null, true);
+  },
   limits: {
     fileSize: 1024 * 1024 * 500,
     files: 10,
@@ -161,6 +188,10 @@ app.use(
     },
   })
 );
+
+app.use("/admin.html", requireAdmin, (req, res) => {
+  res.redirect("/admin");
+});
 
 // Static public files
 app.use(express.static(PUBLIC_DIR));
@@ -328,6 +359,25 @@ function requireAdmin(req, res, next) {
   return res.redirect("/admin-login");
 }
 
+function getCsrfToken(req) {
+  if (!req.session.csrfToken) {
+    req.session.csrfToken = crypto.randomBytes(32).toString("hex");
+  }
+
+  return req.session.csrfToken;
+}
+
+function requireCsrf(req, res, next) {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) return next();
+  if (req.session?.isAdmin !== true) return next();
+
+  const token = String(req.headers["x-csrf-token"] || req.body?._csrf || "");
+
+  if (token && token === req.session.csrfToken) return next();
+
+  return res.status(403).json({ error: "Invalid or missing CSRF token" });
+}
+
 // Basic login rate limiting per IP
 const loginLimiter = new Map(); // ip -> { fails, lockUntil }
 
@@ -445,11 +495,18 @@ app.post("/admin-logout", (req, res) => {
   req.session.destroy(() => res.redirect("/admin-login"));
 });
 
+app.get("/api/csrf-token", requireAdmin, (req, res) => {
+  res.json({ csrfToken: getCsrfToken(req) });
+});
+
+app.use("/api", requireCsrf);
+
 // ----------------------------
 // Playlist
 // ----------------------------
 const imageExt = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
 const videoExt = new Set([".mp4", ".webm", ".mov"]);
+const mediaExt = new Set([...imageExt, ...videoExt]);
 
 function isJunk(name) {
   const lower = name.toLowerCase();
@@ -461,6 +518,81 @@ function isJunk(name) {
     lower.endsWith(".tmp") ||
     lower.endsWith(".crdownload")
   );
+}
+
+function sanitizeMediaFilename(originalName) {
+  const parsed = path.parse(path.basename(String(originalName || "media")));
+  const ext = parsed.ext.toLowerCase();
+  const base = parsed.name
+    .normalize("NFKD")
+    .replace(/[^\w.-]+/g, "-")
+    .replace(/^[.-]+|[.-]+$/g, "")
+    .slice(0, 80);
+
+  return `${base || "media"}${ext}`;
+}
+
+function uniqueMediaFilename(originalName) {
+  const safeName = sanitizeMediaFilename(originalName);
+  const parsed = path.parse(safeName);
+  let candidate = safeName;
+  let counter = 1;
+
+  while (fs.existsSync(path.join(MEDIA_DIR, candidate))) {
+    candidate = `${parsed.name}-${Date.now()}-${counter}${parsed.ext}`;
+    counter += 1;
+  }
+
+  return candidate;
+}
+
+function hasSignature(buffer, signatures) {
+  return signatures.some((signature) => {
+    if (buffer.length < signature.length) return false;
+    return signature.every((byte, index) => buffer[index] === byte);
+  });
+}
+
+function isLikelyMediaFile(filePath, filename) {
+  const ext = path.extname(filename).toLowerCase();
+  const fd = fs.openSync(filePath, "r");
+  const header = Buffer.alloc(32);
+
+  try {
+    const bytesRead = fs.readSync(fd, header, 0, header.length, 0);
+    header.fill(0, bytesRead);
+  } finally {
+    fs.closeSync(fd);
+  }
+
+  if (ext === ".jpg" || ext === ".jpeg") return hasSignature(header, [[0xff, 0xd8, 0xff]]);
+  if (ext === ".png") return hasSignature(header, [[0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]]);
+  if (ext === ".gif") return header.subarray(0, 6).toString("ascii") === "GIF87a" || header.subarray(0, 6).toString("ascii") === "GIF89a";
+  if (ext === ".webp") return header.subarray(0, 4).toString("ascii") === "RIFF" && header.subarray(8, 12).toString("ascii") === "WEBP";
+  if (ext === ".webm") return hasSignature(header, [[0x1a, 0x45, 0xdf, 0xa3]]);
+  if (ext === ".mp4" || ext === ".mov") return header.subarray(4, 8).toString("ascii") === "ftyp";
+
+  return false;
+}
+
+function validateUploadedMediaFiles(files) {
+  for (const file of files) {
+    const ext = path.extname(file.filename).toLowerCase();
+
+    if (!mediaExt.has(ext) || !isLikelyMediaFile(file.path, file.filename)) {
+      throw new Error(`Unsupported or invalid media file: ${file.originalname}`);
+    }
+  }
+}
+
+function cleanupUploadedFiles(files) {
+  for (const file of files) {
+    try {
+      if (file?.path) fs.rmSync(file.path, { force: true });
+    } catch (err) {
+      console.warn("Could not remove rejected upload:", err.message);
+    }
+  }
 }
 
 // Videos first, then images, then alphabetical
@@ -611,6 +743,14 @@ app.get("/api/sync", (req, res) => {
   res.json(syncState);
 });
 
+app.get("/api/health", (req, res) => {
+  res.json({
+    ok: true,
+    playlistVersion: syncState.playlistVersion,
+    mediaDir: fs.existsSync(MEDIA_DIR),
+  });
+});
+
 app.get("/api/playback", requireAdmin, (req, res) => {
   res.json({ paused: syncState.paused });
 });
@@ -733,19 +873,34 @@ app.post("/api/media-duration", requireAdmin, (req, res) => {
 // ----------------------------
 // File Upload API
 // ----------------------------
-app.post("/api/upload", requireAdmin, upload.array("files", 10), (req, res) => {
+app.post("/api/upload", requireAdmin, (req, res, next) => {
+  upload.array("files", 10)(req, res, (err) => {
+    if (err) {
+      return res.status(400).json({ error: err.message || "Upload failed" });
+    }
+
+    return next();
+  });
+}, (req, res) => {
   const files = Array.isArray(req.files) ? req.files : [];
 
   if (files.length === 0) {
     return res.status(400).json({ error: "No files uploaded" });
   }
 
+  try {
+    validateUploadedMediaFiles(files);
+  } catch (err) {
+    cleanupUploadedFiles(files);
+    return res.status(400).json({ error: err.message });
+  }
+
   if (Array.isArray(settings.mediaOrder) && settings.mediaOrder.length > 0) {
     let orderChanged = false;
 
     for (const file of files) {
-      if (!settings.mediaOrder.includes(file.originalname)) {
-        settings.mediaOrder.push(file.originalname);
+      if (!settings.mediaOrder.includes(file.filename)) {
+        settings.mediaOrder.push(file.filename);
         orderChanged = true;
       }
     }
@@ -761,7 +916,7 @@ app.post("/api/upload", requireAdmin, upload.array("files", 10), (req, res) => {
   res.json({
     success: true,
     count: files.length,
-    filenames: files.map((file) => file.originalname),
+    filenames: files.map((file) => file.filename),
   });
 });
 
@@ -925,7 +1080,60 @@ app.delete("/api/media", requireAdmin, (req, res) => {
 // ----------------------------
 // Socket.IO auth + handlers
 // ----------------------------
+function isAllowedSocketOrigin(socket) {
+  const origin = socket.handshake.headers.origin;
+  if (!origin) return true;
+
+  if (ALLOWED_ORIGINS.includes(origin)) return true;
+
+  try {
+    const parsed = new URL(origin);
+    return parsed.host === socket.handshake.headers.host;
+  } catch (err) {
+    return false;
+  }
+}
+
+function playlistSrcSet() {
+  return new Set(buildPlaylist().map((item) => normalizeReportedSrc(item.src)));
+}
+
+function normalizeReportedSrc(src) {
+  const raw = String(src || "");
+  const withoutQuery = raw.split("?")[0];
+  try {
+    return decodeURI(withoutQuery);
+  } catch (err) {
+    return withoutQuery;
+  }
+}
+
+function isKnownPlaylistSrc(src) {
+  return playlistSrcSet().has(normalizeReportedSrc(src));
+}
+
+const playerStateRateLimits = new Map();
+
+function isRateLimited(socketId, limit = 30, windowMs = 10_000) {
+  const now = Date.now();
+  const row = playerStateRateLimits.get(socketId) || { count: 0, resetAt: now + windowMs };
+
+  if (now > row.resetAt) {
+    row.count = 0;
+    row.resetAt = now + windowMs;
+  }
+
+  row.count += 1;
+  playerStateRateLimits.set(socketId, row);
+
+  return row.count > limit;
+}
+
 io.use((socket, next) => {
+  if (!isAllowedSocketOrigin(socket)) {
+    return next(new Error("Socket origin not allowed"));
+  }
+
   sessionMiddleware(socket.request, {}, next);
 });
 
@@ -982,6 +1190,10 @@ io.on("connection", (socket) => {
       return;
     }
 
+    if (isRateLimited(socket.id) || !isKnownPlaylistSrc(state.src)) {
+      return;
+    }
+
     if (!playerSockets.has(socket.id)) {
       playerSockets.add(socket.id);
       broadcastClientCount();
@@ -1006,6 +1218,7 @@ io.on("connection", (socket) => {
     console.log(`🔴 Client disconnected: ${socket.id}`);
     playerSockets.delete(socket.id);
     playerStates.delete(socket.id);
+    playerStateRateLimits.delete(socket.id);
     if (latestPlayerState?.socketId === socket.id) {
       latestPlayerState = [...playerStates.values()].sort((a, b) => b.state.updatedAt - a.state.updatedAt)[0] || null;
     }
@@ -1072,3 +1285,17 @@ server.listen(PORT, "0.0.0.0", () => {
   });
   console.log("htpasswd file:", HTPASSWD_FILE);
 });
+
+function shutdown(signal) {
+  console.log(`Received ${signal}; shutting down...`);
+  if (reloadTimer) clearTimeout(reloadTimer);
+
+  watcher.close().finally(() => {
+    server.close(() => {
+      process.exit(0);
+    });
+  });
+}
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));

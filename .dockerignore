@@ -1,0 +1,9 @@
+node_modules/
+npm-debug.log*
+.git/
+.github/
+.env
+.runtime.env
+admin.htpasswd
+settings.json
+public/media/

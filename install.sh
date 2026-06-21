@@ -115,6 +115,32 @@ process.stdout.write(apr1(password, salt));
   echo "Created $HTPASSWD_FILE"
 }
 
+read_runtime_var() {
+  local key="$1"
+  [ -f "$RUNTIME_ENV_FILE" ] || return 0
+  grep -E "^${key}=" "$RUNTIME_ENV_FILE" | tail -n 1 | cut -d= -f2-
+}
+
+create_session_secret() {
+  local existing=""
+  existing="$(read_runtime_var "SESSION_SECRET")"
+  if [ -n "$existing" ]; then
+    printf "%s" "$existing"
+    return
+  fi
+
+  if [ -n "${SESSION_SECRET:-}" ]; then
+    printf "%s" "$SESSION_SECRET"
+    return
+  fi
+
+  if has_cmd openssl; then
+    openssl rand -hex 32
+  else
+    docker run --rm node:20-alpine node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))'
+  fi
+}
+
 has_cmd docker || die "Docker not found. Install Docker Desktop or Docker Engine."
 docker info >/dev/null 2>&1 || die "Docker daemon not running. Start Docker and re-run."
 
@@ -154,9 +180,11 @@ export ADMIN_USER
 
 LAN_IPS="$(local_ips | awk '!seen[$0]++')"
 PLAYER_HOST="$(printf '%s\n' "$LAN_IPS" | head -n 1)"
+SESSION_SECRET="$(create_session_secret)"
 
 cat > "$RUNTIME_ENV_FILE" <<EOF
 PLAYER_HOST=$PLAYER_HOST
+SESSION_SECRET=$SESSION_SECRET
 EOF
 echo "Wrote $RUNTIME_ENV_FILE"
 
