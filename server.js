@@ -4,9 +4,12 @@ const { Server } = require("socket.io");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
+const os = require("os");
 const chokidar = require("chokidar");
 const session = require("express-session");
 const multer = require("multer");
+const { summarizeSystemHealth } = require("./lib/health");
+const { getImageTransitionEnabled, getPlayerSettingsPayload } = require("./lib/transition");
 
 const app = express();
 const server = http.createServer(app);
@@ -27,6 +30,7 @@ const DEFAULT_SETTINGS = {
   imageIntervalMs: 7000,
   imageDurations: {},
   mediaOrder: [],
+  imageTransitionEnabled: false,
 };
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-me-in-prod");
@@ -34,6 +38,56 @@ const CHOKIDAR_USEPOLLING = String(process.env.CHOKIDAR_USEPOLLING || "true") ==
 const CHOKIDAR_INTERVAL = Number(process.env.CHOKIDAR_INTERVAL || 500);
 const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
 const PLAYER_HOST = String(process.env.PLAYER_HOST || "").trim();
+
+function isPrivateLanIpv4(address) {
+  if (!address || address === "127.0.0.1") return false;
+  if (address.startsWith("169.254.")) return false;
+  if (address.startsWith("198.18.") || address.startsWith("198.19.")) return false;
+  if (address.startsWith("10.")) return true;
+  if (address.startsWith("192.168.")) return true;
+
+  const parts = address.split(".").map((part) => Number(part));
+  return parts.length === 4 && parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31;
+}
+
+function getLanIpv4Addresses() {
+  const interfaces = os.networkInterfaces();
+  const addresses = [];
+
+  Object.entries(interfaces).forEach(([name, rows]) => {
+    (rows || []).forEach((row) => {
+      if (row.family !== "IPv4" || row.internal || !isPrivateLanIpv4(row.address)) return;
+      addresses.push({ name, address: row.address });
+    });
+  });
+
+  return addresses
+    .sort((a, b) => {
+      const score = (entry) => {
+        if (entry.name === "en0") return 0;
+        if (entry.name.startsWith("en")) return 1;
+        return 2;
+      };
+      return score(a) - score(b) || a.name.localeCompare(b.name) || a.address.localeCompare(b.address);
+    })
+    .map((entry) => entry.address)
+    .filter((address, index, list) => list.indexOf(address) === index);
+}
+
+function getRequestHostname(req) {
+  const host = String(req.headers.host || "").split(":")[0].trim();
+  return host || req.hostname || "";
+}
+
+function isLocalHostname(hostname) {
+  return ["localhost", "127.0.0.1", "::1", ""].includes(String(hostname || "").toLowerCase());
+}
+
+function getAdvertisedHost(req) {
+  const requestHost = getRequestHostname(req);
+  if (!isLocalHostname(requestHost)) return requestHost;
+  return PLAYER_HOST || getLanIpv4Addresses()[0] || requestHost || "localhost";
+}
 
 // ----------------------------
 // Middleware
@@ -243,6 +297,7 @@ function loadSettings() {
       if (!Array.isArray(settings.mediaOrder)) {
         settings.mediaOrder = [];
       }
+      settings.imageTransitionEnabled = getImageTransitionEnabled(settings, DEFAULT_SETTINGS.imageTransitionEnabled);
     } else {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
     }
@@ -488,6 +543,22 @@ app.get("/api/playlist", (req, res) => {
   res.json(buildPlaylist());
 });
 
+function getHealthSnapshot() {
+  return summarizeSystemHealth({
+    uptimeMs: process.uptime() * 1000,
+    connectedPlayers: playerSockets.size,
+    playlistCount: buildPlaylist().length,
+    mediaCount: getPlayableMediaNames().length,
+    playlistVersion: syncState.playlistVersion,
+    paused: syncState.paused,
+    lastReloadReason,
+  });
+}
+
+app.get("/api/health", requireAdmin, (req, res) => {
+  res.json(getHealthSnapshot());
+});
+
 // ----------------------------
 // Sync state
 // ----------------------------
@@ -496,12 +567,14 @@ let syncState = {
   playlistVersion: 1,
   paused: false,
 };
+let lastReloadReason = "startup";
 
 const playerStates = new Map();
 const playerSockets = new Set();
 let latestPlayerState = null;
 
 function bumpSync(reason) {
+  lastReloadReason = reason;
   syncState.startedAt = Date.now();
   syncState.playlistVersion += 1;
   console.log(`🕒 Sync reset (${reason}). Version=${syncState.playlistVersion}`);
@@ -513,6 +586,7 @@ function broadcastSync() {
 
 function setPaused(paused) {
   syncState.paused = paused;
+  lastReloadReason = paused ? "pause" : "resume";
 
   if (!paused) {
     bumpSync("resume");
@@ -546,11 +620,19 @@ app.get("/api/network", requireAdmin, (req, res) => {
   const port = hostHeader.includes(":")
     ? hostHeader.split(":").pop()
     : String(process.env.PORT || 3000);
-  const playerHost = PLAYER_HOST || req.hostname || "localhost";
+  const protocol = req.protocol;
+  const playerHost = getAdvertisedHost(req);
+  const lanHosts = getLanIpv4Addresses();
 
   res.json({
     playerHost,
-    playerUrl: `${req.protocol}://${playerHost}:${port}/player`,
+    playerUrl: `${protocol}://${playerHost}:${port}/player`,
+    adminUrl: `${protocol}://${playerHost}:${port}/admin-login`,
+    lanUrls: lanHosts.map((host) => ({
+      host,
+      adminUrl: `${protocol}://${host}:${port}/admin-login`,
+      playerUrl: `${protocol}://${host}:${port}/player`,
+    })),
   });
 });
 
@@ -559,6 +641,10 @@ app.get("/api/network", requireAdmin, (req, res) => {
 // ----------------------------
 app.get("/api/settings", requireAdmin, (req, res) => {
   res.json(settings);
+});
+
+app.get("/api/settings/player", (req, res) => {
+  res.json(getPlayerSettingsPayload(settings, DEFAULT_SETTINGS.imageTransitionEnabled));
 });
 
 app.post("/api/settings", requireAdmin, (req, res) => {
@@ -572,6 +658,7 @@ app.post("/api/settings", requireAdmin, (req, res) => {
 
   settings.imageIntervalMs = Math.floor(interval);
   settings.imageDurations = {};
+  settings.imageTransitionEnabled = getImageTransitionEnabled(req.body, DEFAULT_SETTINGS.imageTransitionEnabled);
   saveSettings();
 
   broadcastReloadAndSync("settings");
@@ -973,10 +1060,15 @@ watcher
 const PORT = Number(process.env.PORT || 3000);
 
 server.listen(PORT, "0.0.0.0", () => {
+  const lanHosts = getLanIpv4Addresses();
   console.log(`Signage server running on port ${PORT}`);
   console.log("Watching media folder:", MEDIA_DIR);
   console.log("Image interval (ms):", settings.imageIntervalMs);
   console.log("Chokidar polling:", CHOKIDAR_USEPOLLING, "interval:", CHOKIDAR_INTERVAL);
   console.log("Admin login:", `http://localhost:${PORT}/admin-login`);
+  lanHosts.forEach((host) => {
+    console.log("LAN admin:", `http://${host}:${PORT}/admin-login`);
+    console.log("LAN player:", `http://${host}:${PORT}/player`);
+  });
   console.log("htpasswd file:", HTPASSWD_FILE);
 });

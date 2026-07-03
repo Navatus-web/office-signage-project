@@ -10,8 +10,11 @@
       position: absolute;
       inset: 0;
       opacity: 0;
-      transition: opacity 420ms ease;
       background: black;
+    }
+    .media-frame.fade-enabled {
+      transition: opacity 900ms ease-in-out;
+      will-change: opacity;
     }
     .media-frame.active {
       opacity: 1;
@@ -28,12 +31,24 @@
 
   <script src="/socket.io/socket.io.js"></script>
   <script>
+    const stage = document.getElementById("stage");
+
+    if (window.location.protocol === "file:") {
+      stage.innerHTML = '<div class="empty">Opening player at http://localhost:3000/player...</div>';
+      window.location.replace("http://localhost:3000/player");
+    }
+
+    if (typeof io !== "function") {
+      stage.innerHTML = '<div class="empty">Open this player from <b style="margin-left:6px;">http://localhost:3000/player</b></div>';
+      throw new Error("Socket.IO is unavailable. Open the player through the running server.");
+    }
+
     const socket = io();
     socket.emit("register-player");
-    const stage = document.getElementById("stage");
 
     let playlist = [];
     let syncState = null;
+    let transitionEnabled = false;
 
     let currentIndex = 0;
     let nextTimer = null;
@@ -52,6 +67,19 @@
       const res = await fetch("/api/sync", { cache: "no-store" });
       syncState = await res.json();
       return syncState;
+    }
+
+    async function fetchSettings() {
+      try {
+        const res = await fetch("/api/settings/player", { cache: "no-store" });
+        if (!res.ok) return null;
+        const settings = await res.json();
+        transitionEnabled = settings?.imageTransitionEnabled === true;
+        return settings;
+      } catch (err) {
+        transitionEnabled = false;
+        return null;
+      }
     }
 
     function clearTimers() {
@@ -199,10 +227,22 @@
       };
     }
 
-    function activateNode(node, previousNode) {
-      requestAnimationFrame(() => {
+    function activateNode(node, previousNode, useFade = false) {
+      if (!node) return;
+
+      node.classList.toggle("fade-enabled", useFade);
+
+      const activate = () => {
         node.classList.add("active");
-      });
+      };
+
+      if (useFade) {
+        requestAnimationFrame(() => {
+          requestAnimationFrame(activate);
+        });
+      } else {
+        activate();
+      }
 
       if (previousNode && previousNode !== node) {
         previousNode.classList.remove("active");
@@ -210,7 +250,7 @@
           if (previousNode.parentNode === stage) {
             previousNode.remove();
           }
-        }, 460);
+        }, useFade ? 980 : 0);
       }
     }
 
@@ -236,15 +276,27 @@
       }
 
       const previousNode = detachPreviousNode();
+      let activated = false;
+      const activateOnce = (node) => {
+        if (activated) return;
+        activated = true;
+        activateNode(node, previousNode, transitionEnabled);
+      };
 
       if (item.type === "image") {
         const img = document.createElement("img");
         img.className = "media-frame";
         img.dataset.src = src;
-        img.src = src;
-        img.onload = () => activateNode(img, previousNode);
+        img.onload = () => {
+          activateOnce(img);
+        };
         img.onerror = () => advanceSequentially();
+        img.src = src;
         stage.appendChild(img);
+
+        if (img.complete && img.naturalWidth > 0) {
+          activateOnce(img);
+        }
 
         currentNode = img;
         currentKind = "image";
@@ -257,15 +309,19 @@
         const video = document.createElement("video");
         video.className = "media-frame";
         video.dataset.src = src;
-        video.src = src;
         video.autoplay = true;
         video.muted = true;
         video.playsInline = true;
         video.preload = "auto";
         video.controls = false;
-        video.onloadeddata = () => activateNode(video, previousNode);
+        video.onloadeddata = () => activateOnce(video);
+        video.src = src;
 
         stage.appendChild(video);
+
+        if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+          activateOnce(video);
+        }
 
         currentNode = video;
         currentKind = "video";
@@ -375,7 +431,7 @@
     }
 
     async function init() {
-      await Promise.all([fetchPlaylist(), fetchSync()]);
+      await Promise.all([fetchPlaylist(), fetchSync(), fetchSettings()]);
       isPaused = syncState?.paused === true;
       if (isPaused) {
         renderPausedFromSync();
@@ -386,7 +442,7 @@
 
     // Media/library changed: do a full re-fetch and re-sync
     socket.on("reload", async () => {
-      await Promise.all([fetchPlaylist(), fetchSync()]);
+      await Promise.all([fetchPlaylist(), fetchSync(), fetchSettings()]);
       isPaused = syncState?.paused === true;
       if (isPaused) {
         renderPausedFromSync();

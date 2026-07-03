@@ -127,12 +127,13 @@
     .panel {
       background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 8px;
+      border-radius: 10px;
       padding: 20px;
       backdrop-filter: blur(12px);
       transition: all 0.3s ease;
       position: relative;
       overflow: hidden;
+      box-shadow: 0 10px 24px rgba(2, 6, 23, 0.16);
     }
 
     .panel::before {
@@ -150,11 +151,56 @@
     .panel:hover {
       border-color: var(--line-strong);
       background: var(--surface-strong);
-      box-shadow: 0 18px 38px rgba(2, 6, 23, 0.22);
+      box-shadow: 0 18px 38px rgba(2, 6, 23, 0.24);
+      transform: translateY(-1px);
     }
 
     .panel:hover::before {
       opacity: 1;
+    }
+
+    .health-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+      gap: 10px;
+      margin: 10px 0 14px;
+    }
+
+    .health-card {
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      padding: 10px 12px;
+      background: rgba(2, 6, 23, 0.24);
+    }
+
+    .health-label {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    .health-value {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 12px;
+      color: var(--soft);
+      font-size: 13px;
+    }
+
+    .toggle-row input {
+      width: 16px;
+      height: 16px;
+      margin: 0;
+      accent-color: var(--accent);
     }
 
     .panel-header {
@@ -288,11 +334,11 @@
       font-family: inherit;
       font-weight: 600;
       border: 1px solid rgba(56, 189, 248, 0.52);
-      border-radius: 4px;
+      border-radius: 6px;
       background: rgba(14, 165, 233, 0.12);
       color: var(--accent);
       cursor: pointer;
-      transition: all 0.3s ease;
+      transition: all 0.2s ease;
       text-transform: uppercase;
       letter-spacing: 0.04em;
       flex: 1;
@@ -312,8 +358,8 @@
       border-color: var(--accent);
       color: #e0f2fe;
       background: rgba(14, 165, 233, 0.22);
-      box-shadow: 0 12px 24px rgba(2, 6, 23, 0.2);
-      transform: translateY(-2px);
+      box-shadow: 0 10px 22px rgba(2, 6, 23, 0.22);
+      transform: translateY(-1px);
     }
 
     button:active {
@@ -390,6 +436,8 @@
       justify-content: space-between;
       gap: 12px;
       margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.12);
     }
 
     .media-actions {
@@ -437,13 +485,21 @@
       align-items: center;
       padding: 8px 10px;
       border: 1px solid rgba(148, 163, 184, 0.16);
-      border-radius: 4px;
+      border-radius: 8px;
       background: rgba(2, 6, 23, 0.32);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
     }
 
     .media-row.dragging {
       opacity: 0.45;
       border-color: var(--accent);
+    }
+
+    .media-row:hover {
+      border-color: rgba(56, 189, 248, 0.24);
+      background: rgba(14, 165, 233, 0.09);
+      transform: translateY(-1px);
+      box-shadow: 0 8px 16px rgba(2, 6, 23, 0.14);
     }
 
     .drag-handle {
@@ -568,6 +624,13 @@
       align-items: center;
       gap: 10px;
       min-width: 0;
+    }
+
+    .account-section-toggle {
+      margin-bottom: 12px;
+      width: auto;
+      min-width: 180px;
+      justify-content: flex-start;
     }
 
     .account-disclosure-toggle::before {
@@ -792,6 +855,10 @@
       </div>
       <label>Default Overall Image Time (seconds)</label>
       <input id="intervalInput" type="number" min="1" max="600">
+      <label class="toggle-row">
+        <input id="transitionToggle" type="checkbox">
+        <span>Fade into the next image</span>
+      </label>
       <div class="button-group compact-actions">
         <button onclick="saveInterval()">Apply To All Images</button>
       </div>
@@ -841,8 +908,6 @@
     </div>
   </div>
 
-  <div class="panel-title">▌ Screen Operations</div>
-
   <div class="grid">
     <div class="panel full-width">
       <div class="panel-header">
@@ -854,6 +919,24 @@
           </svg>
         </span>
         <span class="panel-name">Broadcast Control</span>
+      </div>
+      <div class="health-grid" id="healthGrid">
+        <div class="health-card">
+          <div class="health-label">Status</div>
+          <div class="health-value" id="healthStatus">Loading…</div>
+        </div>
+        <div class="health-card">
+          <div class="health-label">Uptime</div>
+          <div class="health-value" id="healthUptime">—</div>
+        </div>
+        <div class="health-card">
+          <div class="health-label">Players</div>
+          <div class="health-value" id="healthPlayers">—</div>
+        </div>
+        <div class="health-card">
+          <div class="health-label">Playlist</div>
+          <div class="health-value" id="healthPlaylist">—</div>
+        </div>
       </div>
       <label>Player URL</label>
       <div class="copy-row">
@@ -868,40 +951,50 @@
     </div>
   </div>
 
-  <div class="panel-title">▌ Account</div>
-
   <div class="grid">
     <div class="panel logout-panel full-width">
-      <div class="account-stack">
-        <div class="account-section">
-          <button
-            id="passwordResetToggle"
-            class="compact account-disclosure-toggle"
-            type="button"
-            aria-expanded="false"
-            aria-controls="passwordResetContent"
-            onclick="togglePasswordResetMenu()"
-          >
-            Password Reset Menu
-          </button>
-          <div id="passwordResetContent" class="account-disclosure-content">
-            <label>New Admin Password</label>
-            <input id="passwordInput" type="password" maxlength="64" autocomplete="new-password">
-            <label>Confirm New Password</label>
-            <input id="passwordConfirmInput" type="password" maxlength="64" autocomplete="new-password">
-            <div class="button-group compact-actions">
-              <button onclick="resetAdminPassword()">Update Password</button>
+      <button
+        id="accountSectionToggle"
+        class="compact account-disclosure-toggle account-section-toggle"
+        type="button"
+        aria-expanded="false"
+        aria-controls="accountSectionContent"
+        onclick="toggleAccountSection()"
+      >
+        Account Options
+      </button>
+      <div id="accountSectionContent" class="account-disclosure-content">
+        <div class="account-stack">
+          <div class="account-section">
+            <button
+              id="passwordResetToggle"
+              class="compact account-disclosure-toggle"
+              type="button"
+              aria-expanded="false"
+              aria-controls="passwordResetContent"
+              onclick="togglePasswordResetMenu()"
+            >
+              Password Reset Menu
+            </button>
+            <div id="passwordResetContent" class="account-disclosure-content">
+              <label>New Admin Password</label>
+              <input id="passwordInput" type="password" maxlength="64" autocomplete="new-password">
+              <label>Confirm New Password</label>
+              <input id="passwordConfirmInput" type="password" maxlength="64" autocomplete="new-password">
+              <div class="button-group compact-actions">
+                <button onclick="resetAdminPassword()">Update Password</button>
+              </div>
             </div>
+            <div class="status" id="accountStatus"></div>
           </div>
-          <div class="status" id="accountStatus"></div>
-        </div>
 
-        <div class="account-section">
-          <form method="POST" action="/admin-logout" style="margin: 0;">
-            <div class="button-group compact-actions" style="margin-top: 0;">
-              <button class="danger">Logout</button>
-            </div>
-          </form>
+          <div class="account-section">
+            <form method="POST" action="/admin-logout" style="margin: 0;">
+              <div class="button-group compact-actions" style="margin-top: 0;">
+                <button class="danger">Logout</button>
+              </div>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -925,6 +1018,30 @@ function showStatus(status, type, message){
   status.classList.add("show", type);
   status.innerText = message;
   setTimeout(() => status.classList.remove("show"), 4000);
+}
+
+async function loadHealth(){
+  try {
+    const res = await fetch("/api/health", { cache: "no-store" });
+
+    if (res.status === 401) {
+      window.location = "/admin-login";
+      return;
+    }
+
+    if (!res.ok) return;
+
+    const data = await res.json();
+    document.getElementById("healthStatus").innerText = data.paused ? "Paused" : "Running";
+    document.getElementById("healthUptime").innerText = data.uptimeText || "—";
+    document.getElementById("healthPlayers").innerText = `${data.connectedPlayers} player${data.connectedPlayers === 1 ? "" : "s"}`;
+    document.getElementById("healthPlaylist").innerText = `${data.playlistCount} item${data.playlistCount === 1 ? "" : "s"}`;
+  } catch (e) {
+    document.getElementById("healthStatus").innerText = "Unavailable";
+    document.getElementById("healthUptime").innerText = "—";
+    document.getElementById("healthPlayers").innerText = "—";
+    document.getElementById("healthPlaylist").innerText = "—";
+  }
 }
 
 async function setPlayerUrl(){
@@ -951,6 +1068,20 @@ function updatePauseButton(){
   button.innerText = screensPaused ? "Resume All Displays" : "Pause All Displays";
   button.classList.toggle("danger", screensPaused);
   updatePreviewStateLabel();
+}
+
+function toggleAccountSection(forceOpen){
+  const toggle = document.getElementById("accountSectionToggle");
+  const content = document.getElementById("accountSectionContent");
+  if(!toggle || !content) return;
+
+  const isOpen = typeof forceOpen === "boolean"
+    ? forceOpen
+    : !content.classList.contains("is-open");
+
+  content.classList.toggle("is-open", isOpen);
+  toggle.classList.toggle("is-open", isOpen);
+  toggle.setAttribute("aria-expanded", isOpen ? "true" : "false");
 }
 
 function togglePasswordResetMenu(forceOpen){
@@ -1565,11 +1696,13 @@ async function loadSettings(){
 
   const settings = await res.json();
   document.getElementById("intervalInput").value = settings.imageIntervalMs / 1000;
+  document.getElementById("transitionToggle").checked = settings.imageTransitionEnabled === true;
 }
 
 async function saveInterval(){
   const seconds = Number(document.getElementById("intervalInput").value);
   const ms = seconds * 1000;
+  const transitionEnabled = document.getElementById("transitionToggle").checked;
 
   const res = await fetch("/api/settings",{
     method:"POST",
@@ -1577,7 +1710,8 @@ async function saveInterval(){
       "Content-Type":"application/json"
     },
     body:JSON.stringify({
-      imageIntervalMs:ms
+      imageIntervalMs:ms,
+      imageTransitionEnabled: transitionEnabled
     })
   });
 
@@ -1711,7 +1845,9 @@ loadSettings();
 loadMediaFiles();
 setPlayerUrl();
 loadPlaybackState();
+loadHealth();
 refreshPreview();
+setInterval(loadHealth, 10000);
 
 </script>
 
