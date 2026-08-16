@@ -4,25 +4,173 @@
   <title>Office Display</title>
   <style>
     body { margin: 0; background: black; overflow: hidden; }
-    #stage { width: 100vw; height: 100vh; position: relative; }
+    #stage {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+      perspective: 1600px;
+      background: black;
+    }
     img, video { width: 100vw; height: 100vh; object-fit: contain; }
     .media-frame {
       position: absolute;
       inset: 0;
       opacity: 0;
+      z-index: 1;
       background: black;
-    }
-    .media-frame.fade-enabled {
-      transition: opacity 900ms ease-in-out;
+      pointer-events: none;
+      transition: opacity 780ms cubic-bezier(0.22, 1, 0.36, 1);
+      transform-origin: left center;
+      backface-visibility: hidden;
       will-change: opacity;
     }
     .media-frame.active {
       opacity: 1;
+      z-index: 2;
+    }
+    .media-frame.retiring {
+      opacity: 0;
+      z-index: 1;
+    }
+    body.transition-none .media-frame {
+      transition: none;
+    }
+    body.transition-page .media-frame {
+      transform: rotateY(-82deg);
+      transform-origin: left center;
+      transition:
+        opacity 760ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 760ms cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: -36px 0 58px rgba(0, 0, 0, 0.36);
+    }
+    body.transition-page .media-frame.active {
+      opacity: 1;
+      transform: rotateY(0deg);
+    }
+    body.transition-page .media-frame.retiring {
+      opacity: 0;
+      transform: rotateY(12deg);
+      transform-origin: right center;
+      z-index: 1;
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .media-frame {
+        transition-duration: 120ms;
+      }
+      body.transition-page .media-frame {
+        transition-duration: 120ms;
+      }
     }
     .empty {
-      color: #fff; font-family: Arial, sans-serif;
-      display:flex; align-items:center; justify-content:center;
-      height:100vh; opacity:0.9;
+      box-sizing: border-box;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 48px;
+      overflow: hidden;
+      color: #f5f7f8;
+      background: #090c0f;
+      font-family: Arial, Helvetica, sans-serif;
+    }
+    .empty::before,
+    .empty::after {
+      content: "";
+      position: absolute;
+      background: #1b242b;
+    }
+    .empty::before {
+      width: min(76vw, 920px);
+      height: 1px;
+      top: 18%;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .empty::after {
+      width: 1px;
+      height: min(60vh, 560px);
+      right: 14%;
+      top: 50%;
+      transform: translateY(-50%);
+    }
+    .empty-content {
+      position: relative;
+      z-index: 1;
+      width: min(720px, 100%);
+    }
+    .empty-brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 42px;
+      color: #a9b4bc;
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .empty-brand-mark {
+      width: 34px;
+      height: 34px;
+      display: grid;
+      place-items: center;
+      color: #07110d;
+      background: #63d6aa;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+    .empty h1 {
+      max-width: 680px;
+      margin: 0;
+      font-size: 58px;
+      line-height: 1.08;
+      font-weight: 700;
+    }
+    .empty-copy {
+      margin: 20px 0 40px;
+      color: #9da9b1;
+      font-size: 21px;
+      line-height: 1.55;
+    }
+    .empty-meta {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      padding-top: 24px;
+      border-top: 1px solid #253039;
+      color: #c6ced3;
+      font-size: 15px;
+    }
+    .empty-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .empty-status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: #63d6aa;
+      box-shadow: 0 0 0 4px rgba(99, 214, 170, 0.12);
+    }
+    .empty-status.offline .empty-status-dot {
+      background: #f1b85b;
+      box-shadow: 0 0 0 4px rgba(241, 184, 91, 0.12);
+    }
+    .empty-separator { color: #46535c; }
+    .empty-time {
+      margin-left: auto;
+      color: #7f8c95;
+      font-variant-numeric: tabular-nums;
+    }
+    @media (max-width: 640px) {
+      .empty { padding: 28px; }
+      .empty::before { top: 13%; }
+      .empty::after { display: none; }
+      .empty-brand { margin-bottom: 30px; }
+      .empty h1 { font-size: 38px; }
+      .empty-copy { font-size: 18px; }
+      .empty-meta { align-items: flex-start; flex-wrap: wrap; gap: 10px 14px; }
+      .empty-time { width: 100%; margin-left: 0; }
     }
   </style>
 </head>
@@ -44,18 +192,54 @@
     }
 
     const socket = io();
-    socket.emit("register-player");
+    const DEVICE_ID_KEY = "office-signage-device-id";
+    const DEVICE_NAME_KEY = "office-signage-device-name";
+
+    function getDeviceId() {
+      let id = localStorage.getItem(DEVICE_ID_KEY);
+      if (!id) {
+        id = `display-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        localStorage.setItem(DEVICE_ID_KEY, id);
+      }
+      return id;
+    }
+
+    function getDeviceName() {
+      const params = new URLSearchParams(window.location.search);
+      const fromUrl = params.get("name");
+      if (fromUrl) {
+        localStorage.setItem(DEVICE_NAME_KEY, fromUrl.slice(0, 48));
+      }
+      return localStorage.getItem(DEVICE_NAME_KEY) || document.title || "Office Display";
+    }
+
+    function registerPlayer() {
+      socket.emit("register-player", {
+        deviceId: getDeviceId(),
+        name: getDeviceName()
+      });
+    }
+
+    registerPlayer();
+    setInterval(() => socket.emit("player-heartbeat"), 5000);
+    socket.on("connect", () => {
+      registerPlayer();
+      updateStandbyConnection(true);
+    });
+    socket.on("disconnect", () => updateStandbyConnection(false));
 
     let playlist = [];
     let syncState = null;
-    let transitionEnabled = false;
 
     let currentIndex = 0;
     let nextTimer = null;
     let currentNode = null;
     let currentKind = null; // "image" | "video" | null
     let isPaused = false;
+    let transitionMode = "fade";
+    let standbyClockTimer = null;
     const preloadCache = new Map();
+    const FADE_CLEANUP_MS = 940;
 
     async function fetchPlaylist() {
       const res = await fetch("/api/playlist", { cache: "no-store" });
@@ -66,25 +250,22 @@
     async function fetchSync() {
       const res = await fetch("/api/sync", { cache: "no-store" });
       syncState = await res.json();
+      applyTransitionSetting(syncState);
       return syncState;
     }
 
-    async function fetchSettings() {
-      try {
-        const res = await fetch("/api/settings/player", { cache: "no-store" });
-        if (!res.ok) return null;
-        const settings = await res.json();
-        transitionEnabled = settings?.imageTransitionEnabled === true;
-        return settings;
-      } catch (err) {
-        transitionEnabled = false;
-        return null;
-      }
+    function applyTransitionSetting(state) {
+      const mode = state?.transitionMode || (state?.fadeEnabled === false ? "none" : "fade");
+      transitionMode = ["fade", "page", "none"].includes(mode) ? mode : "fade";
+      document.body.classList.toggle("transition-none", transitionMode === "none");
+      document.body.classList.toggle("transition-page", transitionMode === "page");
     }
 
     function clearTimers() {
       if (nextTimer) clearTimeout(nextTimer);
       nextTimer = null;
+      if (standbyClockTimer) clearInterval(standbyClockTimer);
+      standbyClockTimer = null;
     }
 
     function cacheBustedSrc(item) {
@@ -178,9 +359,61 @@
       stage.innerHTML = "";
     }
 
+    function clearStandby() {
+      const empty = stage.querySelector(".empty");
+      if (empty) {
+        empty.remove();
+      }
+      if (standbyClockTimer) clearInterval(standbyClockTimer);
+      standbyClockTimer = null;
+    }
+
     function showEmpty() {
       resetPlaybackState();
-      stage.innerHTML = `<div class="empty">No media found in <b style="margin-left:6px;">/public/media</b></div>`;
+      stage.innerHTML = `
+        <div class="empty">
+          <div class="empty-content">
+            <div class="empty-brand">
+              <span class="empty-brand-mark" aria-hidden="true">OS</span>
+              <span>Office Signage</span>
+            </div>
+            <h1>Waiting for content</h1>
+            <p class="empty-copy">This display is ready for its next playlist.</p>
+            <div class="empty-meta">
+              <span class="empty-status" id="standbyStatus">
+                <span class="empty-status-dot" aria-hidden="true"></span>
+                <span id="standbyStatusText">Online</span>
+              </span>
+              <span class="empty-separator" aria-hidden="true">/</span>
+              <span id="standbyDevice"></span>
+              <time class="empty-time" id="standbyTime"></time>
+            </div>
+          </div>
+        </div>`;
+
+      document.getElementById("standbyDevice").textContent = getDeviceName();
+      updateStandbyConnection(socket.connected);
+      updateStandbyClock();
+      standbyClockTimer = setInterval(updateStandbyClock, 1000);
+    }
+
+    function updateStandbyConnection(isConnected) {
+      const status = document.getElementById("standbyStatus");
+      const label = document.getElementById("standbyStatusText");
+      if (!status || !label) return;
+      status.classList.toggle("offline", !isConnected);
+      label.textContent = isConnected ? "Online" : "Reconnecting";
+    }
+
+    function updateStandbyClock() {
+      const clock = document.getElementById("standbyTime");
+      if (!clock) return;
+      const now = new Date();
+      clock.dateTime = now.toISOString();
+      clock.textContent = now.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit"
+      });
     }
 
     // Build timeline using IMAGES ONLY for time-based sync
@@ -227,30 +460,38 @@
       };
     }
 
-    function activateNode(node, previousNode, useFade = false) {
-      if (!node) return;
+    function removeAfterFade(previousNode) {
+      if (!previousNode || previousNode === currentNode) return;
 
-      node.classList.toggle("fade-enabled", useFade);
-
-      const activate = () => {
-        node.classList.add("active");
+      let removed = false;
+      const remove = () => {
+        if (removed) return;
+        removed = true;
+        if (previousNode.parentNode === stage) {
+          previousNode.remove();
+        }
       };
 
-      if (useFade) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(activate);
-        });
-      } else {
-        activate();
+      if (transitionMode === "none") {
+        remove();
+        return;
       }
 
+      previousNode.addEventListener("transitionend", remove, { once: true });
+      setTimeout(remove, FADE_CLEANUP_MS);
+    }
+
+    function activateNode(node, previousNode) {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          node.classList.add("active");
+        });
+      });
+
       if (previousNode && previousNode !== node) {
+        previousNode.classList.add("retiring");
         previousNode.classList.remove("active");
-        setTimeout(() => {
-          if (previousNode.parentNode === stage) {
-            previousNode.remove();
-          }
-        }, useFade ? 980 : 0);
+        removeAfterFade(previousNode);
       }
     }
 
@@ -269,6 +510,8 @@
     }
 
     function renderItem(item) {
+      clearStandby();
+
       const src = cacheBustedSrc(item);
       if (currentNode?.dataset?.src === src && currentKind === item.type) {
         reportPlayerState(item);
@@ -276,26 +519,31 @@
       }
 
       const previousNode = detachPreviousNode();
-      let activated = false;
-      const activateOnce = (node) => {
-        if (activated) return;
-        activated = true;
-        activateNode(node, previousNode, transitionEnabled);
-      };
 
       if (item.type === "image") {
         const img = document.createElement("img");
+        let imageActivated = false;
+        const activateImage = async () => {
+          if (imageActivated) return;
+          imageActivated = true;
+          try {
+            await img.decode?.();
+          } catch (err) {
+            // Some browsers reject decode for already-renderable images.
+          }
+          activateNode(img, previousNode);
+        };
+
         img.className = "media-frame";
         img.dataset.src = src;
-        img.onload = () => {
-          activateOnce(img);
-        };
+        img.decoding = "async";
+        img.onload = activateImage;
         img.onerror = () => advanceSequentially();
         img.src = src;
         stage.appendChild(img);
 
         if (img.complete && img.naturalWidth > 0) {
-          activateOnce(img);
+          activateImage();
         }
 
         currentNode = img;
@@ -307,6 +555,13 @@
 
       if (item.type === "video") {
         const video = document.createElement("video");
+        let videoActivated = false;
+        const activateVideo = () => {
+          if (videoActivated) return;
+          videoActivated = true;
+          activateNode(video, previousNode);
+        };
+
         video.className = "media-frame";
         video.dataset.src = src;
         video.autoplay = true;
@@ -314,13 +569,14 @@
         video.playsInline = true;
         video.preload = "auto";
         video.controls = false;
-        video.onloadeddata = () => activateOnce(video);
         video.src = src;
+        video.oncanplay = activateVideo;
+        video.onloadeddata = activateVideo;
 
         stage.appendChild(video);
 
         if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-          activateOnce(video);
+          activateVideo();
         }
 
         currentNode = video;
@@ -431,7 +687,7 @@
     }
 
     async function init() {
-      await Promise.all([fetchPlaylist(), fetchSync(), fetchSettings()]);
+      await Promise.all([fetchPlaylist(), fetchSync()]);
       isPaused = syncState?.paused === true;
       if (isPaused) {
         renderPausedFromSync();
@@ -442,7 +698,7 @@
 
     // Media/library changed: do a full re-fetch and re-sync
     socket.on("reload", async () => {
-      await Promise.all([fetchPlaylist(), fetchSync(), fetchSettings()]);
+      await Promise.all([fetchPlaylist(), fetchSync()]);
       isPaused = syncState?.paused === true;
       if (isPaused) {
         renderPausedFromSync();
@@ -451,9 +707,14 @@
       playFromSync();
     });
 
+    socket.on("hard-reload", () => {
+      window.location.reload();
+    });
+
     // Soft sync update: store latest sync state, but DO NOT restart videos constantly
     socket.on("sync", (state) => {
       syncState = state;
+      applyTransitionSetting(syncState);
       isPaused = syncState?.paused === true;
 
       if (isPaused) {
@@ -471,7 +732,10 @@
     });
 
     socket.on("playback-state", ({ paused, syncState: nextSyncState }) => {
-      if (nextSyncState) syncState = nextSyncState;
+      if (nextSyncState) {
+        syncState = nextSyncState;
+        applyTransitionSetting(syncState);
+      }
 
       if (paused) {
         pausePlayback();

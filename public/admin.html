@@ -288,6 +288,79 @@
       color: var(--accent);
     }
 
+    .transition-options {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .transition-option {
+      min-width: 148px;
+      min-height: 40px;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 11px;
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      border-radius: 4px;
+      background: rgba(2, 6, 23, 0.28);
+      color: var(--soft);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: all 0.2s ease;
+    }
+
+    .transition-option:hover {
+      border-color: rgba(56, 189, 248, 0.42);
+      color: #e0f2fe;
+    }
+
+    .transition-option input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .transition-switch {
+      width: 34px;
+      height: 18px;
+      border-radius: 999px;
+      background: rgba(148, 163, 184, 0.26);
+      position: relative;
+      flex: 0 0 auto;
+      transition: background 0.2s ease;
+    }
+
+    .transition-switch::after {
+      content: "";
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      top: 2px;
+      left: 2px;
+      border-radius: 50%;
+      background: #e5edf6;
+      transition: transform 0.2s ease;
+    }
+
+    .transition-option:has(input:checked) {
+      border-color: rgba(56, 189, 248, 0.58);
+      background: rgba(14, 165, 233, 0.14);
+      color: #bae6fd;
+    }
+
+    .transition-option input:checked + .transition-switch {
+      background: var(--accent-strong);
+    }
+
+    .transition-option input:checked + .transition-switch::after {
+      transform: translateX(16px);
+    }
+
     .copy-row {
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
@@ -455,6 +528,94 @@
       flex: 0 0 auto;
     }
 
+    .drop-zone {
+      border: 1px dashed rgba(56, 189, 248, 0.45);
+      border-radius: 8px;
+      padding: 18px;
+      background: rgba(14, 165, 233, 0.08);
+      color: var(--soft);
+      cursor: pointer;
+      font-size: 12px;
+      text-align: center;
+      transition: all 0.2s ease;
+    }
+
+    .drop-zone.is-dragging {
+      border-color: var(--accent);
+      background: rgba(14, 165, 233, 0.18);
+      color: #e0f2fe;
+    }
+
+    .upload-progress {
+      width: 100%;
+      height: 6px;
+      margin-top: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(2, 6, 23, 0.34);
+      display: none;
+    }
+
+    .upload-progress span {
+      display: block;
+      width: 0%;
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.2s ease;
+    }
+
+    .bulk-toolbar {
+      display: grid;
+      grid-template-columns: auto minmax(110px, 160px) auto auto auto;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .bulk-toolbar input {
+      margin-top: 0;
+    }
+
+    .device-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .device-row {
+      display: grid;
+      grid-template-columns: 110px minmax(0, 1fr) 130px minmax(0, 1fr) 120px;
+      gap: 10px;
+      align-items: center;
+      padding: 10px 12px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 4px;
+      background: rgba(2, 6, 23, 0.28);
+      font-size: 12px;
+    }
+
+    .device-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      font-size: 10px;
+    }
+
+    .device-status::before {
+      content: "";
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--danger);
+    }
+
+    .device-status.online::before {
+      background: var(--success);
+    }
+
     .media-heading {
       font-size: 12px;
       color: var(--soft);
@@ -480,7 +641,7 @@
 
     .media-row {
       display: grid;
-      grid-template-columns: 18px minmax(0, 1.4fr) 72px 78px minmax(220px, auto) 72px;
+      grid-template-columns: 18px 18px 64px minmax(0, 1.4fr) 72px 78px minmax(220px, auto) 72px;
       gap: 10px;
       align-items: center;
       padding: 8px 10px;
@@ -488,6 +649,36 @@
       border-radius: 8px;
       background: rgba(2, 6, 23, 0.32);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+    }
+
+    .media-select {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--accent);
+      margin: 0;
+    }
+
+    .media-thumb {
+      width: 64px;
+      aspect-ratio: 16 / 9;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 4px;
+      background: rgba(15, 23, 42, 0.82);
+      color: var(--muted);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 10px;
+      overflow: hidden;
+      text-transform: uppercase;
+    }
+
+    .media-thumb img,
+    .media-thumb video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
     }
 
     .media-row.dragging {
@@ -719,13 +910,18 @@
       }
 
       .media-row {
-        grid-template-columns: 18px minmax(0, 1fr) 70px auto;
+        grid-template-columns: 18px 18px 64px minmax(0, 1fr) 70px auto;
       }
 
       .duration-control,
       .duration-note,
       .media-remove {
-        grid-column: 2 / -1;
+        grid-column: 4 / -1;
+      }
+
+      .bulk-toolbar,
+      .device-row {
+        grid-template-columns: 1fr;
       }
 
       .duration-control {
@@ -771,8 +967,12 @@
       }
 
       .media-row {
-        grid-template-columns: 18px minmax(0, 1fr) auto;
+        grid-template-columns: 18px 18px minmax(0, 1fr) auto;
         align-items: start;
+      }
+
+      .media-thumb {
+        display: none;
       }
 
       .media-meta {
@@ -833,7 +1033,9 @@
         <span class="panel-name">Media Upload</span>
       </div>
       <label>Select Up To 10 Media Files</label>
+      <div class="drop-zone" id="dropZone">Drop media here or click to choose files</div>
       <input id="fileInput" type="file" accept="image/*,video/*" multiple>
+      <div class="upload-progress" id="uploadProgress"><span></span></div>
       <div class="button-group">
         <button onclick="uploadFile()">Upload</button>
         <button class="danger" onclick="confirmClearMedia()">Clear Media Folder</button>
@@ -855,10 +1057,24 @@
       </div>
       <label>Default Overall Image Time (seconds)</label>
       <input id="intervalInput" type="number" min="1" max="600">
-      <label class="toggle-row">
-        <input id="transitionToggle" type="checkbox">
-        <span>Fade into the next image</span>
-      </label>
+      <label>Transition Style</label>
+      <div class="transition-options" role="radiogroup" aria-label="Transition style">
+        <label class="transition-option">
+          <input type="radio" name="transitionMode" value="fade" onchange="saveTransitionSetting(this.value)">
+          <span class="transition-switch" aria-hidden="true"></span>
+          Fade
+        </label>
+        <label class="transition-option">
+          <input type="radio" name="transitionMode" value="page" onchange="saveTransitionSetting(this.value)">
+          <span class="transition-switch" aria-hidden="true"></span>
+          Page Turn
+        </label>
+        <label class="transition-option">
+          <input type="radio" name="transitionMode" value="none" onchange="saveTransitionSetting(this.value)">
+          <span class="transition-switch" aria-hidden="true"></span>
+          Off
+        </label>
+      </div>
       <div class="button-group compact-actions">
         <button onclick="saveInterval()">Apply To All Images</button>
       </div>
@@ -870,10 +1086,19 @@
             <span class="media-count" id="mediaCount">0 items</span>
           </div>
           <div class="media-actions">
+            <button onclick="selectAllMedia()">Select All</button>
+            <button onclick="clearMediaSelection()">Clear Selection</button>
             <button onclick="saveMediaOrder()">Save Order</button>
             <button onclick="resetMediaOrder()">Reset Order</button>
             <button onclick="loadMediaFiles()">Refresh List</button>
           </div>
+        </div>
+        <div class="bulk-toolbar">
+          <span class="media-heading" id="selectedMediaCount">0 selected</span>
+          <input id="bulkDurationInput" type="number" min="1" max="600" placeholder="Seconds">
+          <button onclick="applyBulkDuration()">Set Duration</button>
+          <button class="danger" onclick="deleteSelectedMedia()">Delete Selected</button>
+          <button onclick="moveSelectedToTop()">Move To Top</button>
         </div>
         <div class="media-list" id="mediaList">
           <div class="media-empty">Loading media folder...</div>
@@ -950,6 +1175,27 @@
       <div class="status" id="reloadStatus"></div>
     </div>
   </div>
+
+  <div class="panel-title">Display Health</div>
+
+  <div class="grid">
+    <div class="panel full-width">
+      <div class="panel-header">
+        <span class="panel-icon" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <rect x="2.5" y="3" width="11" height="7.5" rx="1.3"></rect>
+            <path d="M6.3 13h3.4M8 10.5V13"></path>
+          </svg>
+        </span>
+        <span class="panel-name">Connected Displays</span>
+      </div>
+      <div class="device-list" id="deviceList">
+        <div class="media-empty">No displays connected.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel-title">Account</div>
 
   <div class="grid">
     <div class="panel logout-panel full-width">
@@ -1043,6 +1289,7 @@ let previewSyncState = null;
 let previewTimer = null;
 let previewVideoTimer = null;
 let previewCurrentSrc = "";
+const selectedMedia = new Set();
 
 function showStatus(status, type, message){
   status.classList.remove("success", "error");
@@ -1522,6 +1769,136 @@ function enableMediaDragSort(){
   };
 }
 
+function updateSelectedMediaCount(){
+  const label = document.getElementById("selectedMediaCount");
+  if(label){
+    label.innerText = `${selectedMedia.size} selected`;
+  }
+}
+
+function getSelectedMediaNames(){
+  return [...selectedMedia];
+}
+
+function selectAllMedia(){
+  document.querySelectorAll("#mediaList .media-row").forEach((row) => {
+    selectedMedia.add(row.dataset.filename);
+    const checkbox = row.querySelector(".media-select");
+    if(checkbox) checkbox.checked = true;
+  });
+  updateSelectedMediaCount();
+}
+
+function clearMediaSelection(){
+  selectedMedia.clear();
+  document.querySelectorAll("#mediaList .media-select").forEach((checkbox) => {
+    checkbox.checked = false;
+  });
+  updateSelectedMediaCount();
+}
+
+function moveSelectedToTop(){
+  const list = document.getElementById("mediaList");
+  const selectedRows = [...list.querySelectorAll(".media-row")]
+    .filter((row) => selectedMedia.has(row.dataset.filename));
+
+  selectedRows.reverse().forEach((row) => {
+    list.insertBefore(row, list.firstChild);
+  });
+}
+
+function createMediaThumb(file){
+  const thumb = document.createElement("div");
+  thumb.className = "media-thumb";
+
+  if(file.type === "image"){
+    const img = document.createElement("img");
+    img.src = file.src;
+    img.alt = "";
+    thumb.appendChild(img);
+    return thumb;
+  }
+
+  if(file.type === "video"){
+    const video = document.createElement("video");
+    video.src = file.src;
+    video.muted = true;
+    video.preload = "metadata";
+    video.playsInline = true;
+    thumb.appendChild(video);
+    return thumb;
+  }
+
+  thumb.innerText = file.type || "file";
+  return thumb;
+}
+
+async function applyBulkDuration(){
+  const status = document.getElementById("settingsStatus");
+  const filenames = getSelectedMediaNames();
+  const durationSeconds = document.getElementById("bulkDurationInput").value;
+
+  if(filenames.length === 0){
+    showStatus(status, "error", "Select at least one image first");
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/media-duration/bulk", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filenames, durationSeconds })
+    });
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", `Updated ${data.updatedCount} image${data.updatedCount === 1 ? "" : "s"}`);
+      loadMediaFiles();
+      refreshPreview();
+    }
+    else {
+      showStatus(status, "error", data.error || "Bulk duration failed");
+    }
+  } catch (e) {
+    showStatus(status, "error", "Bulk duration error: " + e.message);
+  }
+}
+
+async function deleteSelectedMedia(){
+  const status = document.getElementById("uploadStatus");
+  const filenames = getSelectedMediaNames();
+
+  if(filenames.length === 0){
+    showStatus(status, "error", "Select at least one media file first");
+    return;
+  }
+
+  if(!window.confirm(`Delete ${filenames.length} selected file${filenames.length === 1 ? "" : "s"}? This cannot be undone.`)){
+    return;
+  }
+
+  try {
+    const res = await fetch("/api/media/bulk-delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ filenames })
+    });
+    const data = await res.json();
+
+    if(res.ok){
+      showStatus(status, "success", `Removed ${data.deletedCount} file${data.deletedCount === 1 ? "" : "s"}`);
+      clearMediaSelection();
+      loadMediaFiles();
+      refreshPreview();
+    }
+    else {
+      showStatus(status, "error", data.error || "Delete selected failed");
+    }
+  } catch (e) {
+    showStatus(status, "error", "Delete selected error: " + e.message);
+  }
+}
+
 async function saveMediaOrder(){
   const status = document.getElementById("settingsStatus");
   const filenames = getMediaOrderFromDom();
@@ -1595,6 +1972,8 @@ function renderMediaFiles(files){
   list.innerHTML = "";
 
   if(files.length === 0){
+    selectedMedia.clear();
+    updateSelectedMediaCount();
     const empty = document.createElement("div");
     empty.className = "media-empty";
     empty.innerText = "No media files found.";
@@ -1612,6 +1991,22 @@ function renderMediaFiles(files){
     handle.className = "drag-handle";
     handle.title = "Drag to reorder";
     handle.innerText = "⋮⋮";
+
+    const select = document.createElement("input");
+    select.type = "checkbox";
+    select.className = "media-select";
+    select.checked = selectedMedia.has(file.name);
+    select.onchange = () => {
+      if(select.checked){
+        selectedMedia.add(file.name);
+      }
+      else {
+        selectedMedia.delete(file.name);
+      }
+      updateSelectedMediaCount();
+    };
+
+    const thumb = createMediaThumb(file);
 
     const name = document.createElement("div");
     name.className = "media-name";
@@ -1658,6 +2053,8 @@ function renderMediaFiles(files){
     }
 
     row.appendChild(handle);
+    row.appendChild(select);
+    row.appendChild(thumb);
     row.appendChild(name);
     row.appendChild(meta);
     row.appendChild(type);
@@ -1674,6 +2071,7 @@ function renderMediaFiles(files){
   });
 
   enableMediaDragSort();
+  updateSelectedMediaCount();
 }
 
 async function loadMediaFiles(){
@@ -1727,13 +2125,59 @@ async function loadSettings(){
 
   const settings = await res.json();
   document.getElementById("intervalInput").value = settings.imageIntervalMs / 1000;
-  document.getElementById("transitionToggle").checked = settings.imageTransitionEnabled === true;
+  setTransitionMode(settings.transitionMode || (settings.fadeEnabled === false ? "none" : "fade"));
+}
+
+function getTransitionMode(){
+  return document.querySelector('input[name="transitionMode"]:checked')?.value || "fade";
+}
+
+function setTransitionMode(mode){
+  const nextMode = ["fade", "page", "none"].includes(mode) ? mode : "fade";
+  const input = document.querySelector(`input[name="transitionMode"][value="${nextMode}"]`);
+  if(input){
+    input.checked = true;
+  }
+}
+
+function setUploadProgress(percent){
+  const wrapper = document.getElementById("uploadProgress");
+  const bar = wrapper?.querySelector("span");
+  if(!wrapper || !bar) return;
+
+  if(percent === null){
+    wrapper.style.display = "none";
+    bar.style.width = "0%";
+    return;
+  }
+
+  wrapper.style.display = "block";
+  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function uploadWithProgress(formData){
+  return new Promise(async (resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/upload");
+    xhr.setRequestHeader("X-CSRF-Token", await getCsrfToken());
+    xhr.upload.onprogress = (event) => {
+      if(event.lengthComputable){
+        setUploadProgress((event.loaded / event.total) * 100);
+      }
+    };
+    xhr.onload = () => {
+      const data = JSON.parse(xhr.responseText || "{}");
+      resolve({ ok: xhr.status >= 200 && xhr.status < 300, status: xhr.status, data, json: async () => data });
+    };
+    xhr.onerror = () => reject(new Error("Network upload failed"));
+    xhr.send(formData);
+  });
 }
 
 async function saveInterval(){
   const seconds = Number(document.getElementById("intervalInput").value);
   const ms = seconds * 1000;
-  const transitionEnabled = document.getElementById("transitionToggle").checked;
+  const transitionMode = getTransitionMode();
 
   const res = await fetch("/api/settings",{
     method:"POST",
@@ -1742,7 +2186,7 @@ async function saveInterval(){
     },
     body:JSON.stringify({
       imageIntervalMs:ms,
-      imageTransitionEnabled: transitionEnabled
+      transitionMode
     })
   });
 
@@ -1754,6 +2198,45 @@ async function saveInterval(){
   }
   else{
     showStatus(status, "error", "✗ Failed to apply default time");
+  }
+}
+
+function transitionLabel(mode){
+  if(mode === "page") return "Page turn";
+  if(mode === "none") return "Transitions off";
+  return "Fade";
+}
+
+async function saveTransitionSetting(mode){
+  const status = document.getElementById("settingsStatus");
+  const seconds = Number(document.getElementById("intervalInput").value);
+  const ms = seconds * 1000;
+  const transitionMode = ["fade", "page", "none"].includes(mode) ? mode : getTransitionMode();
+  setTransitionMode(transitionMode);
+
+  try {
+    const res = await fetch("/api/settings",{
+      method:"POST",
+      headers:{
+        "Content-Type":"application/json"
+      },
+      body:JSON.stringify({
+        imageIntervalMs:ms,
+        transitionMode,
+        preserveDurations:true,
+        forcePlayerRefresh:true
+      })
+    });
+
+    if(res.ok){
+      showStatus(status, "success", `✓ ${transitionLabel(transitionMode)} selected. Refreshing displays...`);
+      refreshPreview();
+      return;
+    }
+
+    showStatus(status, "error", "✗ Failed to update transition setting");
+  } catch (e) {
+    showStatus(status, "error", "✗ Transition setting error: " + e.message);
   }
 }
 
@@ -1778,13 +2261,11 @@ async function uploadFile(){
   });
 
   try {
-    const res = await fetch("/api/upload", {
-      method: "POST",
-      body: formData
-    });
+    setUploadProgress(2);
+    const res = await uploadWithProgress(formData);
 
     if(res.ok){
-      const data = await res.json();
+      const data = res.data;
       showStatus(status, "success", `✓ Uploaded ${data.count} file${data.count === 1 ? "" : "s"}`);
       fileInput.value = "";
       loadMediaFiles();
@@ -1797,6 +2278,36 @@ async function uploadFile(){
   } catch (e) {
     showStatus(status, "error", "✗ Upload error: " + e.message);
   }
+}
+
+function setupDropZone(){
+  const dropZone = document.getElementById("dropZone");
+  const fileInput = document.getElementById("fileInput");
+  if(!dropZone || !fileInput) return;
+
+  dropZone.onclick = () => fileInput.click();
+
+  ["dragenter", "dragover"].forEach((eventName) => {
+    dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropZone.classList.add("is-dragging");
+    });
+  });
+
+  ["dragleave", "drop"].forEach((eventName) => {
+    dropZone.addEventListener(eventName, (event) => {
+      event.preventDefault();
+      dropZone.classList.remove("is-dragging");
+    });
+  });
+
+  dropZone.addEventListener("drop", (event) => {
+    const files = event.dataTransfer?.files;
+    if(files?.length){
+      fileInput.files = files;
+      uploadFile();
+    }
+  });
 }
 
 async function confirmClearMedia(){
@@ -1847,8 +2358,86 @@ function togglePauseScreens(){
   showStatus(status, "success", screensPaused ? "✓ Displays paused" : "✓ Displays resumed");
 }
 
+function mediaNameFromDeviceSrc(src){
+  if(!src) return "Idle";
+  return mediaNameFromSrc(src);
+}
+
+function formatRelativeTime(value){
+  if(!value) return "Never";
+  const seconds = Math.max(0, Math.round((Date.now() - new Date(value).getTime()) / 1000));
+  if(seconds < 10) return "Just now";
+  if(seconds < 60) return `${seconds}s ago`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes}m ago`;
+}
+
+function renderDevices(devices){
+  const list = document.getElementById("deviceList");
+  if(!list) return;
+  list.innerHTML = "";
+
+  if(!Array.isArray(devices) || devices.length === 0){
+    const empty = document.createElement("div");
+    empty.className = "media-empty";
+    empty.innerText = "No displays connected.";
+    list.appendChild(empty);
+    return;
+  }
+
+  devices.forEach((device) => {
+    const row = document.createElement("div");
+    row.className = "device-row";
+
+    const status = document.createElement("span");
+    status.className = `device-status ${device.online ? "online" : ""}`;
+    status.innerText = device.online ? "Online" : "Offline";
+
+    const name = document.createElement("div");
+    name.innerText = device.name || "Display";
+    name.title = device.id;
+
+    const ip = document.createElement("div");
+    ip.className = "media-meta";
+    ip.innerText = device.ip || "unknown";
+
+    const current = document.createElement("div");
+    current.innerText = mediaNameFromDeviceSrc(device.current?.src);
+    current.title = current.innerText;
+
+    const seen = document.createElement("div");
+    seen.className = "media-meta";
+    seen.innerText = formatRelativeTime(device.lastSeenAt);
+
+    row.appendChild(status);
+    row.appendChild(name);
+    row.appendChild(ip);
+    row.appendChild(current);
+    row.appendChild(seen);
+    list.appendChild(row);
+  });
+}
+
+async function loadDevices(){
+  try {
+    const res = await fetch("/api/devices");
+    if(res.status === 401){
+      window.location="/admin-login";
+      return;
+    }
+    const data = await res.json();
+    renderDevices(data.devices || []);
+  } catch (e) {
+    renderDevices([]);
+  }
+}
+
 socket.on("client-count", (count) => {
   document.getElementById("clientCount").innerText = `${count} device${count === 1 ? "" : "s"} connected`;
+});
+
+socket.on("devices", (devices) => {
+  renderDevices(devices);
 });
 
 socket.on("playback-state", ({ paused }) => {
@@ -1879,6 +2468,8 @@ loadPlaybackState();
 loadHealth();
 refreshPreview();
 setInterval(loadHealth, 10000);
+loadDevices();
+setupDropZone();
 
 </script>
 

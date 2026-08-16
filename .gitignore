@@ -6,3 +6,5 @@ admin.htpasswd
 public/media/
 .env
 .runtime.env
+.agent-loop/
+*.log

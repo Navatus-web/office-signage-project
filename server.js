@@ -9,7 +9,7 @@ const chokidar = require("chokidar");
 const session = require("express-session");
 const multer = require("multer");
 const { summarizeSystemHealth } = require("./lib/health");
-const { getImageTransitionEnabled, getPlayerSettingsPayload } = require("./lib/transition");
+const { getPlayerSettingsPayload, getTransitionMode } = require("./lib/transition");
 
 const app = express();
 const server = http.createServer(app);
@@ -19,18 +19,20 @@ const io = new Server(server);
 // Paths
 // ----------------------------
 const PUBLIC_DIR = path.join(__dirname, "public");
-const MEDIA_DIR = path.join(PUBLIC_DIR, "media");
-const SETTINGS_FILE = path.join(__dirname, "settings.json");
-const HTPASSWD_FILE = path.join(__dirname, "admin.htpasswd");
+const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || path.join(PUBLIC_DIR, "media"));
+const SETTINGS_FILE = path.resolve(process.env.SETTINGS_FILE || path.join(__dirname, "settings.json"));
+const HTPASSWD_FILE = path.resolve(process.env.HTPASSWD_FILE || path.join(__dirname, "admin.htpasswd"));
 
 // ----------------------------
 // Config
 // ----------------------------
 const DEFAULT_SETTINGS = {
   imageIntervalMs: 7000,
+  fadeEnabled: true,
+  transitionMode: "fade",
   imageDurations: {},
   mediaOrder: [],
-  imageTransitionEnabled: false,
+  imageTransitionEnabled: true,
 };
 
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-me-in-prod");
@@ -328,7 +330,9 @@ function loadSettings() {
       if (!Array.isArray(settings.mediaOrder)) {
         settings.mediaOrder = [];
       }
-      settings.imageTransitionEnabled = getImageTransitionEnabled(settings, DEFAULT_SETTINGS.imageTransitionEnabled);
+      settings.transitionMode = getTransitionMode(settings, DEFAULT_SETTINGS.transitionMode);
+      settings.fadeEnabled = settings.transitionMode !== "none";
+      settings.imageTransitionEnabled = settings.fadeEnabled;
     } else {
       fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 2));
     }
@@ -676,7 +680,8 @@ app.get("/api/playlist", (req, res) => {
 });
 
 function getHealthSnapshot() {
-  return summarizeSystemHealth({
+  return {
+    ...summarizeSystemHealth({
     uptimeMs: process.uptime() * 1000,
     connectedPlayers: playerSockets.size,
     playlistCount: buildPlaylist().length,
@@ -684,12 +689,10 @@ function getHealthSnapshot() {
     playlistVersion: syncState.playlistVersion,
     paused: syncState.paused,
     lastReloadReason,
-  });
+    }),
+    mediaDir: fs.existsSync(MEDIA_DIR),
+  };
 }
-
-app.get("/api/health", requireAdmin, (req, res) => {
-  res.json(getHealthSnapshot());
-});
 
 // ----------------------------
 // Sync state
@@ -703,7 +706,10 @@ let lastReloadReason = "startup";
 
 const playerStates = new Map();
 const playerSockets = new Set();
+const playerDevices = new Map();
+const socketToDeviceId = new Map();
 let latestPlayerState = null;
+const DEVICE_OFFLINE_AFTER_MS = 20_000;
 
 function bumpSync(reason) {
   lastReloadReason = reason;
@@ -712,8 +718,17 @@ function bumpSync(reason) {
   console.log(`🕒 Sync reset (${reason}). Version=${syncState.playlistVersion}`);
 }
 
+function buildSyncPayload() {
+  const transitionMode = getTransitionMode(settings, DEFAULT_SETTINGS.transitionMode);
+  return {
+    ...syncState,
+    transitionMode,
+    fadeEnabled: transitionMode !== "none",
+  };
+}
+
 function broadcastSync() {
-  io.emit("sync", syncState);
+  io.emit("sync", buildSyncPayload());
 }
 
 function setPaused(paused) {
@@ -727,7 +742,7 @@ function setPaused(paused) {
   console.log(paused ? "⏸️ Playback paused" : "▶️ Playback resumed");
   io.emit("playback-state", {
     paused: syncState.paused,
-    syncState,
+    syncState: buildSyncPayload(),
   });
   broadcastSync();
 }
@@ -739,20 +754,106 @@ function broadcastReloadAndSync(reason) {
   broadcastSync();
 }
 
+function broadcastHardReload(reason) {
+  console.log(`🔄 Broadcasting browser refresh (${reason})`);
+  io.emit("hard-reload");
+}
+
+function cleanDeviceName(name, fallback) {
+  const trimmed = String(name || "").trim().slice(0, 48);
+  return trimmed || fallback;
+}
+
+function serializeDevice(device) {
+  const now = Date.now();
+  return {
+    id: device.id,
+    name: device.name,
+    ip: device.ip || "unknown",
+    socketId: device.socketId || null,
+    online: device.online === true && now - device.lastSeenAt < DEVICE_OFFLINE_AFTER_MS,
+    connectedAt: device.connectedAt ? new Date(device.connectedAt).toISOString() : null,
+    lastSeenAt: device.lastSeenAt ? new Date(device.lastSeenAt).toISOString() : null,
+    current: device.current || null,
+  };
+}
+
+function getSerializedDevices() {
+  return [...playerDevices.values()]
+    .map(serializeDevice)
+    .sort((a, b) => Number(b.online) - Number(a.online) || a.name.localeCompare(b.name));
+}
+
+function broadcastDevices() {
+  const devices = getSerializedDevices();
+  io.emit("devices", devices);
+  io.emit("client-count", devices.filter((device) => device.online).length);
+}
+
+function findMediaFile(filename) {
+  const name = String(filename || "");
+  if (!name || name.includes("/") || name.includes("\\")) {
+    return null;
+  }
+
+  const targetPath = path.resolve(MEDIA_DIR, name);
+  const mediaRoot = path.resolve(MEDIA_DIR);
+
+  if (!targetPath.startsWith(`${mediaRoot}${path.sep}`)) {
+    return null;
+  }
+
+  return targetPath;
+}
+
+function removeMediaFile(filename) {
+  const targetPath = findMediaFile(filename);
+  if (!targetPath || !fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+    return false;
+  }
+
+  fs.rmSync(targetPath, { force: true });
+
+  if (settings.imageDurations?.[filename]) {
+    delete settings.imageDurations[filename];
+  }
+
+  if (Array.isArray(settings.mediaOrder)) {
+    settings.mediaOrder = settings.mediaOrder.filter((name) => name !== filename);
+  }
+
+  return true;
+}
+
 app.get("/api/sync", (req, res) => {
-  res.json(syncState);
+  res.json(buildSyncPayload());
 });
 
 app.get("/api/health", (req, res) => {
-  res.json({
-    ok: true,
-    playlistVersion: syncState.playlistVersion,
-    mediaDir: fs.existsSync(MEDIA_DIR),
-  });
+  res.json(getHealthSnapshot());
 });
 
 app.get("/api/playback", requireAdmin, (req, res) => {
   res.json({ paused: syncState.paused });
+});
+
+app.get("/api/devices", requireAdmin, (req, res) => {
+  res.json({ devices: getSerializedDevices() });
+});
+
+app.post("/api/devices/:id", requireAdmin, (req, res) => {
+  const id = String(req.params.id || "").trim();
+  const device = playerDevices.get(id);
+
+  if (!device) {
+    return res.status(404).json({ error: "Device not found" });
+  }
+
+  device.name = cleanDeviceName(req.body?.name, device.name);
+  playerDevices.set(id, device);
+  broadcastDevices();
+
+  res.json({ success: true, device: serializeDevice(device) });
 });
 
 app.get("/api/network", requireAdmin, (req, res) => {
@@ -784,11 +885,12 @@ app.get("/api/settings", requireAdmin, (req, res) => {
 });
 
 app.get("/api/settings/player", (req, res) => {
-  res.json(getPlayerSettingsPayload(settings, DEFAULT_SETTINGS.imageTransitionEnabled));
+  res.json(getPlayerSettingsPayload(settings, DEFAULT_SETTINGS.transitionMode));
 });
 
 app.post("/api/settings", requireAdmin, (req, res) => {
   const interval = Number(req.body?.imageIntervalMs);
+  const preserveDurations = req.body?.preserveDurations === true;
 
   if (!Number.isFinite(interval) || interval < 1000 || interval > 600000) {
     return res.status(400).json({
@@ -797,11 +899,18 @@ app.post("/api/settings", requireAdmin, (req, res) => {
   }
 
   settings.imageIntervalMs = Math.floor(interval);
-  settings.imageDurations = {};
-  settings.imageTransitionEnabled = getImageTransitionEnabled(req.body, DEFAULT_SETTINGS.imageTransitionEnabled);
+  settings.transitionMode = getTransitionMode(req.body, DEFAULT_SETTINGS.transitionMode);
+  settings.fadeEnabled = settings.transitionMode !== "none";
+  settings.imageTransitionEnabled = settings.fadeEnabled;
+  if (!preserveDurations) {
+    settings.imageDurations = {};
+  }
   saveSettings();
 
   broadcastReloadAndSync("settings");
+  if (req.body?.forcePlayerRefresh === true) {
+    broadcastHardReload("settings");
+  }
 
   res.json(settings);
 });
@@ -870,6 +979,40 @@ app.post("/api/media-duration", requireAdmin, (req, res) => {
   });
 });
 
+app.post("/api/media-duration/bulk", requireAdmin, (req, res) => {
+  const filenames = req.body?.filenames;
+  const durationSeconds = req.body?.durationSeconds;
+
+  if (!Array.isArray(filenames) || filenames.length === 0) {
+    return res.status(400).json({ error: "filenames must be a non-empty array" });
+  }
+
+  const seconds = Number(durationSeconds);
+  if (!Number.isFinite(seconds) || seconds < 1 || seconds > 600) {
+    return res.status(400).json({ error: "Duration must be between 1 and 600 seconds" });
+  }
+
+  let updatedCount = 0;
+
+  for (const filename of filenames) {
+    const name = String(filename || "");
+    const filePath = findMediaFile(name);
+    const ext = path.extname(name).toLowerCase();
+
+    if (!filePath || !imageExt.has(ext) || !fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+      continue;
+    }
+
+    settings.imageDurations[name] = Math.floor(seconds * 1000);
+    updatedCount += 1;
+  }
+
+  saveSettings();
+  broadcastReloadAndSync("bulk-media-duration");
+
+  res.json({ success: true, updatedCount });
+});
+
 // ----------------------------
 // File Upload API
 // ----------------------------
@@ -935,6 +1078,7 @@ app.get("/api/media", requireAdmin, (req, res) => {
         return {
           name: entry.name,
           type,
+          src: `/media/${encodeURIComponent(entry.name)}`,
           size: stats.size,
           modifiedAt: stats.mtime.toISOString(),
           durationMs: type === "image" ? settings.imageDurations?.[entry.name] || null : null,
@@ -993,6 +1137,32 @@ app.post("/api/media-order", requireAdmin, (req, res) => {
   });
 });
 
+app.post("/api/media/bulk-delete", requireAdmin, (req, res) => {
+  const filenames = req.body?.filenames;
+
+  if (!Array.isArray(filenames) || filenames.length === 0) {
+    return res.status(400).json({ error: "filenames must be a non-empty array" });
+  }
+
+  let deletedCount = 0;
+
+  try {
+    for (const filename of filenames) {
+      if (removeMediaFile(String(filename || ""))) {
+        deletedCount += 1;
+      }
+    }
+
+    saveSettings();
+  } catch (err) {
+    console.error("Failed to bulk remove media files:", err.message);
+    return res.status(500).json({ error: "Failed to remove selected media" });
+  }
+
+  broadcastReloadAndSync("bulk-remove-media");
+  res.json({ success: true, deletedCount });
+});
+
 app.delete("/api/media-order", requireAdmin, (req, res) => {
   settings.mediaOrder = [];
   saveSettings();
@@ -1007,30 +1177,13 @@ app.delete("/api/media-order", requireAdmin, (req, res) => {
 app.delete("/api/media/:filename", requireAdmin, (req, res) => {
   const filename = String(req.params.filename || "");
 
-  if (!filename || filename.includes("/") || filename.includes("\\")) {
+  if (!findMediaFile(filename)) {
     return res.status(400).json({ error: "Valid filename is required" });
   }
 
-  const targetPath = path.resolve(MEDIA_DIR, filename);
-  const mediaRoot = path.resolve(MEDIA_DIR);
-
-  if (!targetPath.startsWith(`${mediaRoot}${path.sep}`)) {
-    return res.status(400).json({ error: "Invalid media path" });
-  }
-
   try {
-    if (!fs.existsSync(targetPath) || !fs.statSync(targetPath).isFile()) {
+    if (!removeMediaFile(filename)) {
       return res.status(404).json({ error: "Media file not found" });
-    }
-
-    fs.rmSync(targetPath, { force: true });
-
-    if (settings.imageDurations?.[filename]) {
-      delete settings.imageDurations[filename];
-    }
-
-    if (Array.isArray(settings.mediaOrder)) {
-      settings.mediaOrder = settings.mediaOrder.filter((name) => name !== filename);
     }
 
     saveSettings();
@@ -1138,29 +1291,53 @@ io.use((socket, next) => {
 });
 
 function broadcastClientCount() {
-  const count = playerSockets.size;
-  io.emit("client-count", count);
+  broadcastDevices();
 }
 
 io.on("connection", (socket) => {
   console.log(`🟢 Client connected: ${socket.id}`);
 
   // Send current sync state to new clients
-  socket.emit("sync", syncState);
+  socket.emit("sync", buildSyncPayload());
   socket.emit("playback-state", {
     paused: syncState.paused,
-    syncState,
+    syncState: buildSyncPayload(),
   });
   if (latestPlayerState) {
     socket.emit("player-state", latestPlayerState);
   }
   broadcastClientCount();
 
-  socket.on("register-player", () => {
-    if (!playerSockets.has(socket.id)) {
-      playerSockets.add(socket.id);
-      broadcastClientCount();
-    }
+  socket.on("register-player", (payload = {}) => {
+    const deviceId = String(payload.deviceId || socket.id).replace(/[^\w.-]/g, "").slice(0, 80) || socket.id;
+    const existing = playerDevices.get(deviceId);
+    const now = Date.now();
+    const device = {
+      id: deviceId,
+      name: cleanDeviceName(payload.name, existing?.name || `Display ${playerDevices.size + 1}`),
+      ip: getClientIp(socket.request),
+      socketId: socket.id,
+      online: true,
+      connectedAt: existing?.connectedAt || now,
+      lastSeenAt: now,
+      current: existing?.current || null,
+    };
+
+    playerSockets.add(socket.id);
+    socketToDeviceId.set(socket.id, deviceId);
+    playerDevices.set(deviceId, device);
+    broadcastDevices();
+  });
+
+  socket.on("player-heartbeat", () => {
+    const deviceId = socketToDeviceId.get(socket.id);
+    const device = deviceId ? playerDevices.get(deviceId) : null;
+    if (!device) return;
+
+    device.lastSeenAt = Date.now();
+    device.online = true;
+    playerDevices.set(deviceId, device);
+    broadcastDevices();
   });
 
   socket.on("reload", () => {
@@ -1211,6 +1388,15 @@ io.on("connection", (socket) => {
 
     playerStates.set(socket.id, payload);
     latestPlayerState = payload;
+    const deviceId = socketToDeviceId.get(socket.id);
+    const device = deviceId ? playerDevices.get(deviceId) : null;
+    if (device) {
+      device.current = payload.state;
+      device.lastSeenAt = Date.now();
+      device.online = true;
+      playerDevices.set(deviceId, device);
+      broadcastDevices();
+    }
     io.emit("player-state", payload);
   });
 
@@ -1219,12 +1405,37 @@ io.on("connection", (socket) => {
     playerSockets.delete(socket.id);
     playerStates.delete(socket.id);
     playerStateRateLimits.delete(socket.id);
+    const deviceId = socketToDeviceId.get(socket.id);
+    const device = deviceId ? playerDevices.get(deviceId) : null;
+    if (device) {
+      device.online = false;
+      device.lastSeenAt = Date.now();
+      device.socketId = null;
+      playerDevices.set(deviceId, device);
+      socketToDeviceId.delete(socket.id);
+    }
     if (latestPlayerState?.socketId === socket.id) {
       latestPlayerState = [...playerStates.values()].sort((a, b) => b.state.updatedAt - a.state.updatedAt)[0] || null;
     }
-    broadcastClientCount();
+    broadcastDevices();
   });
 });
+
+setInterval(() => {
+  let changed = false;
+  const now = Date.now();
+
+  for (const device of playerDevices.values()) {
+    if (device.online && now - device.lastSeenAt >= DEVICE_OFFLINE_AFTER_MS) {
+      device.online = false;
+      changed = true;
+    }
+  }
+
+  if (changed) {
+    broadcastDevices();
+  }
+}, 5_000).unref();
 
 // ----------------------------
 // Media watcher + debounced reload

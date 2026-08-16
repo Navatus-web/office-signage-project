@@ -17,10 +17,14 @@ test('normalizeTransitionEnabled handles admin checkbox-style values', () => {
 
 test('getPlayerSettingsPayload returns the public transition flag', () => {
   assert.deepEqual(getPlayerSettingsPayload({ imageTransitionEnabled: true }), {
+    transitionMode: 'fade',
+    fadeEnabled: true,
     imageTransitionEnabled: true,
   });
 
   assert.deepEqual(getPlayerSettingsPayload({}, false), {
+    transitionMode: 'none',
+    fadeEnabled: false,
     imageTransitionEnabled: false,
   });
 });
