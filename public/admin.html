@@ -1012,6 +1012,658 @@
       }
     }
 
+    /* Motion-inspired control-room theme */
+    :root {
+      --bg: #0c0d11;
+      --surface: #111217;
+      --surface-strong: #17191f;
+      --line: #303238;
+      --line-strong: #4a9af4;
+      --text: #ededec;
+      --muted: #9b9ca3;
+      --soft: #d5d5d2;
+      --accent: #4a9af4;
+      --accent-strong: #2f87e9;
+      --success: #54d59b;
+      --danger: #ff6b7a;
+      --danger-strong: #e84f62;
+      --ink: #090a0d;
+    }
+
+    body {
+      font-family: "Arial Nova", "Helvetica Neue", Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      letter-spacing: 0;
+    }
+
+    .header {
+      background: var(--accent);
+      border-bottom: 1px solid var(--ink);
+      box-shadow: none;
+      backdrop-filter: none;
+      padding: 14px 32px;
+    }
+
+    .header-content {
+      max-width: 1480px;
+      min-height: 48px;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      color: var(--ink);
+      font-size: 17px;
+      font-weight: 800;
+      letter-spacing: 0;
+      text-transform: uppercase;
+    }
+
+    .logo-mark {
+      width: 38px;
+      height: 28px;
+      display: inline-grid;
+      place-items: center;
+      background: var(--ink);
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      line-height: 1;
+    }
+
+    .logo-mode {
+      border-left: 1px solid rgba(9, 10, 13, 0.4);
+      padding-left: 11px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .status-indicator {
+      gap: 10px;
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      background: var(--ink);
+      animation: none;
+    }
+
+    .client-count {
+      border: 1px solid rgba(9, 10, 13, 0.42);
+      padding: 5px 8px;
+      color: var(--ink);
+      font-size: 10px;
+      letter-spacing: 0;
+    }
+
+    .container {
+      max-width: 1480px;
+      padding: 34px 24px 56px;
+    }
+
+    .panel-title {
+      margin: 4px 0 14px;
+      padding: 0 0 11px;
+      border-bottom-color: var(--line);
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0;
+    }
+
+    .panel-title::before {
+      content: "//";
+      width: auto;
+      height: auto;
+      background: none;
+      color: var(--accent);
+    }
+
+    .grid {
+      gap: 16px;
+      margin-bottom: 22px;
+    }
+
+    .panel {
+      overflow: hidden;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 0;
+      background: var(--surface);
+      box-shadow: none;
+      backdrop-filter: none;
+      transition: border-color 160ms ease, background-color 160ms ease;
+    }
+
+    .panel::before {
+      width: 3px;
+      height: 100%;
+      right: auto;
+      background: var(--accent);
+      opacity: 1;
+      transition: none;
+    }
+
+    .panel:hover {
+      transform: none;
+      border-color: #484a52;
+      background: #131419;
+      box-shadow: none;
+    }
+
+    .panel-header {
+      margin-bottom: 18px;
+      padding-bottom: 14px;
+      border-bottom-color: var(--line);
+    }
+
+    .panel-icon {
+      min-width: 32px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 1px solid #41434a;
+      border-radius: 0;
+      background: var(--ink);
+      color: var(--accent);
+    }
+
+    .panel-name {
+      color: var(--text);
+      font-size: 15px;
+      letter-spacing: 0;
+    }
+
+    label,
+    .health-label,
+    .media-heading,
+    .duration-label,
+    .upload-timer,
+    .device-status {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    input[type="number"],
+    input[type="file"],
+    input[type="text"],
+    input[type="password"] {
+      min-height: 42px;
+      border-color: #41434a;
+      border-radius: 0;
+      background: var(--ink);
+      color: var(--text);
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+    }
+
+    input[type="number"]:focus,
+    input[type="file"]:focus,
+    input[type="text"]:focus,
+    input[type="password"]:focus {
+      border-color: var(--accent);
+      background: var(--ink);
+      box-shadow: 0 0 0 2px var(--accent);
+    }
+
+    input[readonly] {
+      color: var(--accent);
+    }
+
+    input[type="file"]::file-selector-button {
+      border-radius: 0;
+      background: var(--accent);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+
+    input[type="file"]::file-selector-button:hover {
+      transform: none;
+      box-shadow: none;
+      background: #71aff8;
+    }
+
+    .transition-options {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(120px, 1fr));
+      gap: 1px;
+      border: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .interval-setting {
+      margin-top: 16px;
+    }
+
+    #intervalInput {
+      width: 120px;
+      min-height: 38px;
+    }
+
+    .interval-apply {
+      min-width: 120px;
+    }
+
+    .transition-option {
+      min-width: 0;
+      min-height: 44px;
+      margin: 0;
+      padding: 8px 12px;
+      border: 0;
+      border-radius: 0;
+      background: var(--ink);
+      color: var(--soft);
+      letter-spacing: 0;
+    }
+
+    .transition-option:hover {
+      border-color: transparent;
+      background: #17191f;
+      color: var(--text);
+    }
+
+    .transition-option:has(input:checked) {
+      border-color: transparent;
+      background: var(--accent);
+      color: var(--ink);
+    }
+
+    .transition-switch {
+      border: 1px solid #5b5d65;
+      border-radius: 0;
+      background: #26282e;
+    }
+
+    .transition-switch::after {
+      border-radius: 0;
+      background: var(--text);
+    }
+
+    .transition-option input:checked + .transition-switch {
+      border-color: var(--ink);
+      background: var(--ink);
+    }
+
+    .transition-option input:checked + .transition-switch::after {
+      background: var(--accent);
+    }
+
+    button {
+      min-height: 40px;
+      border-color: var(--accent);
+      border-radius: 0;
+      background: transparent;
+      color: var(--accent);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 800;
+      letter-spacing: 0;
+      transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease;
+    }
+
+    button:hover {
+      transform: none;
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    button:active {
+      background: #71aff8;
+    }
+
+    .danger {
+      border-color: var(--danger);
+      background: transparent;
+      color: var(--danger);
+    }
+
+    .danger:hover {
+      border-color: var(--danger);
+      background: var(--danger);
+      color: var(--ink);
+      box-shadow: none;
+    }
+
+    .status {
+      border-radius: 0;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    .status.success {
+      background: #10221b;
+      color: #9ce7c1;
+    }
+
+    .status.error {
+      background: #281216;
+      color: #ffb0b8;
+    }
+
+    .drop-zone {
+      min-height: 132px;
+      border: 1px dashed #3d5875;
+      border-radius: 0;
+      background: #0d1016;
+      color: #b9c2cc;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+      box-shadow: inset 0 0 0 8px #0d1016, inset 0 0 0 9px rgba(74, 154, 244, 0.12);
+    }
+
+    .drop-zone:hover,
+    .drop-zone.is-dragging {
+      border-color: var(--accent);
+      background: #131b26;
+      color: #dcecff;
+      box-shadow: inset 0 0 0 8px #131b26, inset 0 0 0 9px rgba(74, 154, 244, 0.24);
+    }
+
+    .upload-progress {
+      height: 10px;
+      border-color: var(--line);
+      border-radius: 0;
+      background: var(--ink);
+    }
+
+    .upload-progress span {
+      background: var(--accent);
+    }
+
+    .media-browser {
+      border-color: var(--line);
+      border-radius: 0;
+      background: var(--ink);
+      padding: 14px;
+    }
+
+    .media-toolbar {
+      border-bottom-color: var(--line);
+    }
+
+    .media-count {
+      color: var(--accent);
+    }
+
+    .media-actions .icon-button {
+      width: 34px;
+      min-width: 34px;
+      min-height: 34px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 34px;
+    }
+
+    .icon-button svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .media-list {
+      gap: 4px;
+      max-height: 430px;
+    }
+
+    .media-row {
+      border-color: var(--line);
+      border-radius: 0;
+      background: var(--surface);
+      box-shadow: none;
+      transition: background-color 140ms ease, border-color 140ms ease;
+    }
+
+    .media-row:hover {
+      transform: none;
+      border-color: var(--accent);
+      background: #17191f;
+      box-shadow: none;
+    }
+
+    .media-row.dragging {
+      border-color: var(--accent);
+      background: #172638;
+    }
+
+    .media-thumb,
+    .media-type,
+    .media-empty,
+    .device-row,
+    .health-card,
+    .preview-window,
+    .preview-pill {
+      border-radius: 0;
+    }
+
+    .media-thumb {
+      background: var(--ink);
+    }
+
+    .media-type {
+      color: #9ce7c1;
+      border-color: #276346;
+      background: #10221b;
+    }
+
+    .media-type.video {
+      color: #a9d2ff;
+      border-color: #2c5988;
+      background: #101d2b;
+    }
+
+    .health-grid {
+      gap: 1px;
+      border: 1px solid var(--line);
+      background: var(--line);
+    }
+
+    .health-card {
+      position: relative;
+      border: 0;
+      background: var(--ink);
+      padding: 13px 14px;
+    }
+
+    .health-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    .health-value {
+      font-size: 17px;
+    }
+
+    .device-row {
+      border-color: var(--line);
+      background: var(--ink);
+    }
+
+    .preview-window {
+      border-color: var(--line);
+      background: var(--ink);
+      box-shadow: none;
+      perspective: 1200px;
+    }
+
+    .preview-frame {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      z-index: 1;
+      background: var(--ink);
+      pointer-events: none;
+      transform-origin: left center;
+      backface-visibility: hidden;
+      will-change: opacity, transform;
+      transition: opacity 780ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .preview-frame.preview-active {
+      opacity: 1;
+      z-index: 2;
+    }
+
+    .preview-frame.preview-retiring {
+      opacity: 0;
+      z-index: 1;
+    }
+
+    .preview-window.preview-transition-none .preview-frame {
+      transition: none;
+    }
+
+    .preview-window.preview-transition-page .preview-frame {
+      transform: rotateY(-82deg);
+      transform-origin: left center;
+      transition:
+        opacity 760ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 760ms cubic-bezier(0.22, 1, 0.36, 1);
+      box-shadow: -24px 0 38px rgba(0, 0, 0, 0.36);
+    }
+
+    .preview-window.preview-transition-page .preview-frame.preview-active {
+      opacity: 1;
+      transform: rotateY(0deg);
+    }
+
+    .preview-window.preview-transition-page .preview-frame.preview-retiring {
+      opacity: 0;
+      transform: rotateY(12deg);
+      transform-origin: right center;
+      z-index: 1;
+    }
+
+    .preview-window.preview-transition-slide .preview-frame {
+      opacity: 1;
+      transform: translateX(100%);
+      transform-origin: center center;
+      transition:
+        opacity 720ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 720ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .preview-window.preview-transition-slide .preview-frame.preview-active {
+      opacity: 1;
+      transform: translateX(0);
+      z-index: 2;
+    }
+
+    .preview-window.preview-transition-slide .preview-frame.preview-retiring {
+      opacity: 1;
+      transform: translateX(-100%);
+      z-index: 1;
+    }
+
+    .preview-pill {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: var(--ink);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0;
+    }
+
+    .account-disclosure-toggle::before {
+      color: var(--accent);
+    }
+
+    .account-disclosure-content {
+      display: block;
+      max-height: 0;
+      margin-top: 0;
+      overflow: hidden;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      transition: max-height 260ms ease, margin-top 260ms ease, opacity 180ms ease, visibility 0s linear 260ms;
+    }
+
+    .account-disclosure-content.is-open {
+      max-height: 720px;
+      margin-top: 14px;
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition-delay: 0s;
+    }
+
+    ::selection {
+      background: var(--accent);
+      color: var(--ink);
+    }
+
+    @media (max-width: 900px) {
+      .transition-options {
+        grid-template-columns: repeat(2, minmax(120px, 1fr));
+      }
+    }
+
+    @media (max-width: 640px) {
+      .header {
+        padding: 12px 16px;
+      }
+
+      .header-content {
+        align-items: center;
+        flex-direction: row;
+        gap: 12px;
+      }
+
+      .logo-mode,
+      .status-indicator > span:not(.status-dot):not(.client-count) {
+        display: none;
+      }
+
+      .status-indicator {
+        margin-left: auto;
+      }
+
+      .container {
+        padding: 24px 14px 40px;
+      }
+
+      .panel {
+        padding: 18px 16px;
+      }
+
+      .drop-zone {
+        min-height: 112px;
+        padding: 24px 16px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
   </style>
 </head>
 
@@ -1019,7 +1671,11 @@
 
 <div class="header">
   <div class="header-content">
-    <div class="logo">Signage Control</div>
+    <div class="logo">
+      <span class="logo-mark" aria-hidden="true">OS</span>
+      <span>Office Signage</span>
+      <span class="logo-mode">Control</span>
+    </div>
     <div class="status-indicator">
       <span class="status-dot"></span>
       <span>System Online</span>
@@ -1029,7 +1685,7 @@
 </div>
 
 <div class="container">
-  <div class="panel-title">▌ Playback Management</div>
+  <div class="panel-title">Playback Management</div>
   
   <div class="grid">
     <div class="panel">
@@ -1067,8 +1723,6 @@
         </span>
         <span class="panel-name">Interval Control</span>
       </div>
-      <label>Default Overall Image Time (seconds)</label>
-      <input id="intervalInput" type="number" min="1" max="600">
       <label>Transition Style</label>
       <div class="transition-options" role="radiogroup" aria-label="Transition style">
         <label class="transition-option">
@@ -1092,8 +1746,12 @@
           Off
         </label>
       </div>
+      <div class="interval-setting">
+        <label for="intervalInput">Default Overall Image Time (seconds)</label>
+        <input id="intervalInput" type="number" min="1" max="600">
+      </div>
       <div class="button-group compact-actions">
-        <button onclick="saveInterval()">Apply To All Images</button>
+        <button class="interval-apply" onclick="saveInterval()">Apply</button>
       </div>
       <div class="status" id="settingsStatus"></div>
       <div class="media-browser">
@@ -1105,7 +1763,20 @@
           <div class="media-actions">
             <button onclick="saveMediaOrder()">Save Order</button>
             <button onclick="resetMediaOrder()">Reset Order</button>
-            <button onclick="loadMediaFiles()">Refresh List</button>
+            <button
+              class="icon-button"
+              type="button"
+              aria-label="Refresh media list"
+              title="Refresh media list"
+              onclick="loadMediaFiles()"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M21 12a9 9 0 0 0-15.5-6.2L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 15.5 6.2L21 16"></path>
+                <path d="M16 16h5v5"></path>
+              </svg>
+            </button>
           </div>
         </div>
         <div class="media-list" id="mediaList">
@@ -1297,6 +1968,7 @@ let previewSyncState = null;
 let previewTimer = null;
 let previewVideoTimer = null;
 let previewCurrentSrc = "";
+let previewTransitionMode = "fade";
 let uploadStartedAt = 0;
 let uploadTimerId = null;
 
@@ -1401,6 +2073,61 @@ function clearPreviewTimers(){
   previewVideoTimer = null;
 }
 
+function applyPreviewTransitionSetting(state){
+  const preview = document.getElementById("previewWindow");
+  if(!preview) return;
+
+  const mode = state?.transitionMode || (state?.fadeEnabled === false ? "none" : "fade");
+  previewTransitionMode = ["fade", "page", "slide", "none"].includes(mode) ? mode : "fade";
+  preview.classList.toggle("preview-transition-none", previewTransitionMode === "none");
+  preview.classList.toggle("preview-transition-page", previewTransitionMode === "page");
+  preview.classList.toggle("preview-transition-slide", previewTransitionMode === "slide");
+}
+
+function removePreviewFrameAfterTransition(previousNode){
+  if(!previousNode) return;
+
+  let removed = false;
+  const remove = () => {
+    if(removed) return;
+    removed = true;
+    if(previousNode.parentNode) previousNode.remove();
+  };
+
+  if(previewTransitionMode === "none"){
+    remove();
+    return;
+  }
+
+  previousNode.addEventListener("transitionend", remove, { once: true });
+  setTimeout(remove, 940);
+}
+
+function activatePreviewFrame(node){
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      if(!node.parentNode) return;
+
+      if(node.dataset.src !== previewCurrentSrc){
+        node.remove();
+        return;
+      }
+
+      const previousFrames = [...node.parentNode.querySelectorAll(".preview-frame")]
+        .filter((frame) => frame !== node);
+
+      node.classList.add("preview-active");
+
+      previousFrames.forEach((previousNode) => {
+        previousNode.pause?.();
+        previousNode.classList.add("preview-retiring");
+        previousNode.classList.remove("preview-active");
+        removePreviewFrameAfterTransition(previousNode);
+      });
+    });
+  });
+}
+
 function updatePreviewStateLabel(){
   const state = document.getElementById("previewState");
   if(!state) return;
@@ -1486,28 +2213,68 @@ function renderPreviewItem(item){
   name.innerText = mediaNameFromSrc(item.src);
 
   if(previewCurrentSrc === item.src){
-    return preview.querySelector("img, video");
+    return preview.querySelector(".preview-frame.preview-active, .preview-frame");
   }
 
   previewCurrentSrc = item.src;
-  preview.innerHTML = "";
+  preview.querySelectorAll(".preview-empty").forEach((node) => node.remove());
 
   if(item.type === "image"){
     const img = document.createElement("img");
+    let activated = false;
+    const activate = async () => {
+      if(activated) return;
+      activated = true;
+      try {
+        await img.decode?.();
+      } catch (e) {
+        // The image can still be displayed when decode is unavailable or rejected.
+      }
+      activatePreviewFrame(img);
+    };
+
+    img.className = "preview-frame";
+    img.dataset.src = item.src;
+    img.decoding = "async";
+    img.onload = activate;
+    img.onerror = () => {
+      img.remove();
+      if(previewCurrentSrc === item.src) previewCurrentSrc = "";
+    };
     img.src = item.src;
     preview.appendChild(img);
+
+    if(img.complete && img.naturalWidth > 0){
+      activate();
+    }
+
     return img;
   }
 
   if(item.type === "video"){
     const video = document.createElement("video");
+    let activated = false;
+    const activate = () => {
+      if(activated) return;
+      activated = true;
+      activatePreviewFrame(video);
+    };
+
+    video.className = "preview-frame";
+    video.dataset.src = item.src;
     video.src = item.src;
     video.autoplay = !screensPaused;
     video.muted = true;
     video.playsInline = true;
     video.preload = "metadata";
     video.controls = false;
+    video.oncanplay = activate;
+    video.onloadeddata = activate;
     preview.appendChild(video);
+
+    if(video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA){
+      activate();
+    }
 
     if(!screensPaused){
       video.play().catch(() => {});
@@ -1562,6 +2329,7 @@ async function refreshPreview(){
 
     previewPlaylist = await playlistRes.json();
     previewSyncState = await syncRes.json();
+    applyPreviewTransitionSetting(previewSyncState);
     screensPaused = previewSyncState?.paused === true;
     updatePauseButton();
     renderPreviewFromSync();
@@ -2159,6 +2927,7 @@ async function saveTransitionSetting(mode){
   const ms = seconds * 1000;
   const transitionMode = ["fade", "page", "slide", "none"].includes(mode) ? mode : getTransitionMode();
   setTransitionMode(transitionMode);
+  applyPreviewTransitionSetting({ transitionMode });
 
   try {
     const res = await fetch("/api/settings",{
@@ -2411,6 +3180,7 @@ socket.on("reload", () => {
 
 socket.on("sync", (state) => {
   previewSyncState = state;
+  applyPreviewTransitionSetting(state);
   screensPaused = state?.paused === true;
   updatePauseButton();
   renderPreviewFromSync();
