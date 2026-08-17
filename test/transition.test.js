@@ -2,6 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   normalizeTransitionEnabled,
+  normalizeTransitionMode,
   getPlayerSettingsPayload,
 } = require('../lib/transition');
 
@@ -27,4 +28,9 @@ test('getPlayerSettingsPayload returns the public transition flag', () => {
     fadeEnabled: false,
     imageTransitionEnabled: false,
   });
+});
+
+test('normalizeTransitionMode accepts slide transitions', () => {
+  assert.equal(normalizeTransitionMode('slide'), 'slide');
+  assert.equal(getPlayerSettingsPayload({ transitionMode: 'slide' }).transitionMode, 'slide');
 });

@@ -295,20 +295,20 @@ test("transition setting is public sync state and can preserve image durations",
     method: "POST",
     body: JSON.stringify({
       imageIntervalMs: 7000,
-      transitionMode: "page",
+      transitionMode: "slide",
       preserveDurations: true,
     }),
   });
 
   assert.equal(settingsRes.status, 200);
   const settings = await settingsRes.json();
-  assert.equal(settings.transitionMode, "page");
+  assert.equal(settings.transitionMode, "slide");
   assert.equal(settings.fadeEnabled, true);
 
   const syncRes = await fetch(`${BASE_URL}/api/sync`);
   assert.equal(syncRes.status, 200);
   const sync = await syncRes.json();
-  assert.equal(sync.transitionMode, "page");
+  assert.equal(sync.transitionMode, "slide");
   assert.equal(sync.fadeEnabled, true);
 
   const mediaRes = await adminFetch("/api/media");

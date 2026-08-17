@@ -531,12 +531,19 @@
     .drop-zone {
       border: 1px dashed rgba(56, 189, 248, 0.45);
       border-radius: 8px;
-      padding: 18px;
+      min-height: 112px;
+      padding: 28px 22px;
       background: rgba(14, 165, 233, 0.08);
       color: var(--soft);
       cursor: pointer;
-      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
       text-align: center;
+      text-transform: uppercase;
       transition: all 0.2s ease;
     }
 
@@ -548,7 +555,7 @@
 
     .upload-progress {
       width: 100%;
-      height: 6px;
+      height: 8px;
       margin-top: 12px;
       border: 1px solid rgba(148, 163, 184, 0.16);
       border-radius: 999px;
@@ -565,16 +572,15 @@
       transition: width 0.2s ease;
     }
 
-    .bulk-toolbar {
-      display: grid;
-      grid-template-columns: auto minmax(110px, 160px) auto auto auto;
-      gap: 8px;
-      align-items: center;
-      margin-bottom: 10px;
-    }
-
-    .bulk-toolbar input {
-      margin-top: 0;
+    .upload-timer {
+      min-height: 18px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      display: none;
     }
 
     .device-list {
@@ -641,7 +647,7 @@
 
     .media-row {
       display: grid;
-      grid-template-columns: 18px 18px 64px minmax(0, 1.4fr) 72px 78px minmax(220px, auto) 72px;
+      grid-template-columns: 18px 64px minmax(0, 1.4fr) 72px 78px minmax(220px, auto) 72px;
       gap: 10px;
       align-items: center;
       padding: 8px 10px;
@@ -649,13 +655,6 @@
       border-radius: 8px;
       background: rgba(2, 6, 23, 0.32);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
-    }
-
-    .media-select {
-      width: 16px;
-      height: 16px;
-      accent-color: var(--accent);
-      margin: 0;
     }
 
     .media-thumb {
@@ -742,9 +741,18 @@
 
     .duration-control {
       display: grid;
-      grid-template-columns: 68px auto auto;
+      grid-template-columns: minmax(138px, 1fr) 88px auto auto;
       gap: 6px;
       align-items: center;
+    }
+
+    .duration-label {
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-transform: uppercase;
+      white-space: nowrap;
     }
 
     .duration-control input {
@@ -910,22 +918,21 @@
       }
 
       .media-row {
-        grid-template-columns: 18px 18px 64px minmax(0, 1fr) 70px auto;
+        grid-template-columns: 18px 64px minmax(0, 1fr) 70px auto;
       }
 
       .duration-control,
       .duration-note,
       .media-remove {
-        grid-column: 4 / -1;
+        grid-column: 3 / -1;
       }
 
-      .bulk-toolbar,
       .device-row {
         grid-template-columns: 1fr;
       }
 
       .duration-control {
-        grid-template-columns: 72px auto auto;
+        grid-template-columns: minmax(138px, 1fr) 88px auto auto;
       }
     }
 
@@ -967,7 +974,7 @@
       }
 
       .media-row {
-        grid-template-columns: 18px 18px minmax(0, 1fr) auto;
+        grid-template-columns: 18px minmax(0, 1fr) auto;
         align-items: start;
       }
 
@@ -993,7 +1000,11 @@
       }
 
       .duration-control {
-        grid-template-columns: minmax(0, 1fr) auto auto;
+        grid-template-columns: 1fr 82px auto auto;
+      }
+
+      .duration-label {
+        grid-column: 1 / -1;
       }
 
       .preview-window {
@@ -1036,6 +1047,7 @@
       <div class="drop-zone" id="dropZone">Drop media here or click to choose files</div>
       <input id="fileInput" type="file" accept="image/*,video/*" multiple>
       <div class="upload-progress" id="uploadProgress"><span></span></div>
+      <div class="upload-timer" id="uploadTimer"></div>
       <div class="button-group">
         <button onclick="uploadFile()">Upload</button>
         <button class="danger" onclick="confirmClearMedia()">Clear Media Folder</button>
@@ -1070,6 +1082,11 @@
           Page Turn
         </label>
         <label class="transition-option">
+          <input type="radio" name="transitionMode" value="slide" onchange="saveTransitionSetting(this.value)">
+          <span class="transition-switch" aria-hidden="true"></span>
+          Slide
+        </label>
+        <label class="transition-option">
           <input type="radio" name="transitionMode" value="none" onchange="saveTransitionSetting(this.value)">
           <span class="transition-switch" aria-hidden="true"></span>
           Off
@@ -1086,19 +1103,10 @@
             <span class="media-count" id="mediaCount">0 items</span>
           </div>
           <div class="media-actions">
-            <button onclick="selectAllMedia()">Select All</button>
-            <button onclick="clearMediaSelection()">Clear Selection</button>
             <button onclick="saveMediaOrder()">Save Order</button>
             <button onclick="resetMediaOrder()">Reset Order</button>
             <button onclick="loadMediaFiles()">Refresh List</button>
           </div>
-        </div>
-        <div class="bulk-toolbar">
-          <span class="media-heading" id="selectedMediaCount">0 selected</span>
-          <input id="bulkDurationInput" type="number" min="1" max="600" placeholder="Seconds">
-          <button onclick="applyBulkDuration()">Set Duration</button>
-          <button class="danger" onclick="deleteSelectedMedia()">Delete Selected</button>
-          <button onclick="moveSelectedToTop()">Move To Top</button>
         </div>
         <div class="media-list" id="mediaList">
           <div class="media-empty">Loading media folder...</div>
@@ -1289,7 +1297,8 @@ let previewSyncState = null;
 let previewTimer = null;
 let previewVideoTimer = null;
 let previewCurrentSrc = "";
-const selectedMedia = new Set();
+let uploadStartedAt = 0;
+let uploadTimerId = null;
 
 function showStatus(status, type, message){
   status.classList.remove("success", "error");
@@ -1769,44 +1778,6 @@ function enableMediaDragSort(){
   };
 }
 
-function updateSelectedMediaCount(){
-  const label = document.getElementById("selectedMediaCount");
-  if(label){
-    label.innerText = `${selectedMedia.size} selected`;
-  }
-}
-
-function getSelectedMediaNames(){
-  return [...selectedMedia];
-}
-
-function selectAllMedia(){
-  document.querySelectorAll("#mediaList .media-row").forEach((row) => {
-    selectedMedia.add(row.dataset.filename);
-    const checkbox = row.querySelector(".media-select");
-    if(checkbox) checkbox.checked = true;
-  });
-  updateSelectedMediaCount();
-}
-
-function clearMediaSelection(){
-  selectedMedia.clear();
-  document.querySelectorAll("#mediaList .media-select").forEach((checkbox) => {
-    checkbox.checked = false;
-  });
-  updateSelectedMediaCount();
-}
-
-function moveSelectedToTop(){
-  const list = document.getElementById("mediaList");
-  const selectedRows = [...list.querySelectorAll(".media-row")]
-    .filter((row) => selectedMedia.has(row.dataset.filename));
-
-  selectedRows.reverse().forEach((row) => {
-    list.insertBefore(row, list.firstChild);
-  });
-}
-
 function createMediaThumb(file){
   const thumb = document.createElement("div");
   thumb.className = "media-thumb";
@@ -1831,72 +1802,6 @@ function createMediaThumb(file){
 
   thumb.innerText = file.type || "file";
   return thumb;
-}
-
-async function applyBulkDuration(){
-  const status = document.getElementById("settingsStatus");
-  const filenames = getSelectedMediaNames();
-  const durationSeconds = document.getElementById("bulkDurationInput").value;
-
-  if(filenames.length === 0){
-    showStatus(status, "error", "Select at least one image first");
-    return;
-  }
-
-  try {
-    const res = await fetch("/api/media-duration/bulk", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filenames, durationSeconds })
-    });
-    const data = await res.json();
-
-    if(res.ok){
-      showStatus(status, "success", `Updated ${data.updatedCount} image${data.updatedCount === 1 ? "" : "s"}`);
-      loadMediaFiles();
-      refreshPreview();
-    }
-    else {
-      showStatus(status, "error", data.error || "Bulk duration failed");
-    }
-  } catch (e) {
-    showStatus(status, "error", "Bulk duration error: " + e.message);
-  }
-}
-
-async function deleteSelectedMedia(){
-  const status = document.getElementById("uploadStatus");
-  const filenames = getSelectedMediaNames();
-
-  if(filenames.length === 0){
-    showStatus(status, "error", "Select at least one media file first");
-    return;
-  }
-
-  if(!window.confirm(`Delete ${filenames.length} selected file${filenames.length === 1 ? "" : "s"}? This cannot be undone.`)){
-    return;
-  }
-
-  try {
-    const res = await fetch("/api/media/bulk-delete", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ filenames })
-    });
-    const data = await res.json();
-
-    if(res.ok){
-      showStatus(status, "success", `Removed ${data.deletedCount} file${data.deletedCount === 1 ? "" : "s"}`);
-      clearMediaSelection();
-      loadMediaFiles();
-      refreshPreview();
-    }
-    else {
-      showStatus(status, "error", data.error || "Delete selected failed");
-    }
-  } catch (e) {
-    showStatus(status, "error", "Delete selected error: " + e.message);
-  }
 }
 
 async function saveMediaOrder(){
@@ -1972,8 +1877,6 @@ function renderMediaFiles(files){
   list.innerHTML = "";
 
   if(files.length === 0){
-    selectedMedia.clear();
-    updateSelectedMediaCount();
     const empty = document.createElement("div");
     empty.className = "media-empty";
     empty.innerText = "No media files found.";
@@ -1991,21 +1894,6 @@ function renderMediaFiles(files){
     handle.className = "drag-handle";
     handle.title = "Drag to reorder";
     handle.innerText = "⋮⋮";
-
-    const select = document.createElement("input");
-    select.type = "checkbox";
-    select.className = "media-select";
-    select.checked = selectedMedia.has(file.name);
-    select.onchange = () => {
-      if(select.checked){
-        selectedMedia.add(file.name);
-      }
-      else {
-        selectedMedia.delete(file.name);
-      }
-      updateSelectedMediaCount();
-    };
-
     const thumb = createMediaThumb(file);
 
     const name = document.createElement("div");
@@ -2025,13 +1913,23 @@ function renderMediaFiles(files){
     if(file.type === "image"){
       duration.className = "duration-control";
 
+      const label = document.createElement("span");
+      label.className = "duration-label";
+      label.innerText = "Display duration";
+
       const input = document.createElement("input");
       input.type = "number";
       input.min = "1";
       input.max = "600";
-      input.placeholder = "Default";
+      input.placeholder = "Seconds";
       input.value = file.durationMs ? String(Math.round(file.durationMs / 1000)) : "";
       input.title = "Image duration in seconds. Blank uses the global interval.";
+      input.setAttribute("aria-label", `Display duration in seconds for ${file.name}`);
+      input.onkeydown = (event) => {
+        if(event.key === "Enter"){
+          saveMediaDuration(file.name, input.value);
+        }
+      };
 
       const save = document.createElement("button");
       save.type = "button";
@@ -2043,6 +1941,7 @@ function renderMediaFiles(files){
       reset.innerText = "Reset";
       reset.onclick = () => saveMediaDuration(file.name, null);
 
+      duration.appendChild(label);
       duration.appendChild(input);
       duration.appendChild(save);
       duration.appendChild(reset);
@@ -2053,7 +1952,6 @@ function renderMediaFiles(files){
     }
 
     row.appendChild(handle);
-    row.appendChild(select);
     row.appendChild(thumb);
     row.appendChild(name);
     row.appendChild(meta);
@@ -2071,7 +1969,6 @@ function renderMediaFiles(files){
   });
 
   enableMediaDragSort();
-  updateSelectedMediaCount();
 }
 
 async function loadMediaFiles(){
@@ -2133,7 +2030,7 @@ function getTransitionMode(){
 }
 
 function setTransitionMode(mode){
-  const nextMode = ["fade", "page", "none"].includes(mode) ? mode : "fade";
+  const nextMode = ["fade", "page", "slide", "none"].includes(mode) ? mode : "fade";
   const input = document.querySelector(`input[name="transitionMode"][value="${nextMode}"]`);
   if(input){
     input.checked = true;
@@ -2153,6 +2050,54 @@ function setUploadProgress(percent){
 
   wrapper.style.display = "block";
   bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+}
+
+function formatElapsedSeconds(startedAt){
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = elapsedSeconds % 60;
+  return minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+}
+
+function updateUploadTimer(prefix = "Uploading"){
+  const timer = document.getElementById("uploadTimer");
+  if(!timer || !uploadStartedAt) return;
+
+  timer.style.display = "block";
+  timer.innerText = `${prefix} ${formatElapsedSeconds(uploadStartedAt)}`;
+}
+
+function startUploadTimer(){
+  clearInterval(uploadTimerId);
+  uploadStartedAt = Date.now();
+  updateUploadTimer();
+  uploadTimerId = setInterval(() => updateUploadTimer(), 1000);
+}
+
+function finishUploadTimer(messagePrefix){
+  const timer = document.getElementById("uploadTimer");
+  clearInterval(uploadTimerId);
+  uploadTimerId = null;
+
+  if(timer && uploadStartedAt){
+    timer.style.display = "block";
+    timer.innerText = `${messagePrefix} ${formatElapsedSeconds(uploadStartedAt)}`;
+  }
+
+  uploadStartedAt = 0;
+}
+
+function hideUploadProgressAfterDelay(delayMs = 1200){
+  setTimeout(() => {
+    if(uploadTimerId) return;
+
+    const timer = document.getElementById("uploadTimer");
+    if(timer){
+      timer.style.display = "none";
+      timer.innerText = "";
+    }
+    setUploadProgress(null);
+  }, delayMs);
 }
 
 function uploadWithProgress(formData){
@@ -2203,6 +2148,7 @@ async function saveInterval(){
 
 function transitionLabel(mode){
   if(mode === "page") return "Page turn";
+  if(mode === "slide") return "Slide";
   if(mode === "none") return "Transitions off";
   return "Fade";
 }
@@ -2211,7 +2157,7 @@ async function saveTransitionSetting(mode){
   const status = document.getElementById("settingsStatus");
   const seconds = Number(document.getElementById("intervalInput").value);
   const ms = seconds * 1000;
-  const transitionMode = ["fade", "page", "none"].includes(mode) ? mode : getTransitionMode();
+  const transitionMode = ["fade", "page", "slide", "none"].includes(mode) ? mode : getTransitionMode();
   setTransitionMode(transitionMode);
 
   try {
@@ -2246,7 +2192,8 @@ async function uploadFile(){
   const status = document.getElementById("uploadStatus");
 
   if(files.length === 0){
-    showStatus(status, "error", "✗ No files selected");
+    fileInput.click();
+    showStatus(status, "success", "Choose files to upload");
     return;
   }
 
@@ -2262,11 +2209,15 @@ async function uploadFile(){
 
   try {
     setUploadProgress(2);
+    startUploadTimer();
     const res = await uploadWithProgress(formData);
 
     if(res.ok){
       const data = res.data;
       showStatus(status, "success", `✓ Uploaded ${data.count} file${data.count === 1 ? "" : "s"}`);
+      setUploadProgress(100);
+      finishUploadTimer("Uploaded in");
+      hideUploadProgressAfterDelay();
       fileInput.value = "";
       loadMediaFiles();
       refreshPreview();
@@ -2274,9 +2225,13 @@ async function uploadFile(){
     else {
       const err = await res.json();
       showStatus(status, "error", `✗ Upload failed: ${err.error}`);
+      finishUploadTimer("Failed after");
+      hideUploadProgressAfterDelay();
     }
   } catch (e) {
     showStatus(status, "error", "✗ Upload error: " + e.message);
+    finishUploadTimer("Stopped after");
+    hideUploadProgressAfterDelay();
   }
 }
 
@@ -2475,3 +2430,4 @@ setupDropZone();
 
 </body>
 </html>
+

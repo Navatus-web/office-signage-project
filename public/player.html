@@ -53,11 +53,31 @@
       transform-origin: right center;
       z-index: 1;
     }
+    body.transition-slide .media-frame {
+      opacity: 1;
+      transform: translateX(100%);
+      transform-origin: center center;
+      transition:
+        opacity 720ms cubic-bezier(0.22, 1, 0.36, 1),
+        transform 720ms cubic-bezier(0.22, 1, 0.36, 1);
+      will-change: opacity, transform;
+    }
+    body.transition-slide .media-frame.active {
+      opacity: 1;
+      transform: translateX(0);
+      z-index: 2;
+    }
+    body.transition-slide .media-frame.retiring {
+      opacity: 1;
+      transform: translateX(-100%);
+      z-index: 1;
+    }
     @media (prefers-reduced-motion: reduce) {
       .media-frame {
         transition-duration: 120ms;
       }
-      body.transition-page .media-frame {
+      body.transition-page .media-frame,
+      body.transition-slide .media-frame {
         transition-duration: 120ms;
       }
     }
@@ -256,9 +276,10 @@
 
     function applyTransitionSetting(state) {
       const mode = state?.transitionMode || (state?.fadeEnabled === false ? "none" : "fade");
-      transitionMode = ["fade", "page", "none"].includes(mode) ? mode : "fade";
+      transitionMode = ["fade", "page", "slide", "none"].includes(mode) ? mode : "fade";
       document.body.classList.toggle("transition-none", transitionMode === "none");
       document.body.classList.toggle("transition-page", transitionMode === "page");
+      document.body.classList.toggle("transition-slide", transitionMode === "slide");
     }
 
     function clearTimers() {
