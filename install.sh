@@ -39,8 +39,8 @@ prompt_password() {
     read -r -s -p "Confirm admin password: " confirm
     echo ""
 
-    if [ -z "$password" ]; then
-      echo "Password cannot be empty."
+    if [ "${#password}" -lt 4 ] || [ "${#password}" -gt 64 ]; then
+      echo "Password must be between 4 and 64 characters."
     elif [ "$password" != "$confirm" ]; then
       echo "Passwords do not match."
     else
@@ -54,59 +54,17 @@ create_htpasswd() {
   local password="$1"
   local hash=""
 
-  if has_cmd openssl; then
-    hash="$(openssl passwd -apr1 "$password")"
+  if has_cmd node && node -e 'process.exit(typeof require("node:crypto").argon2 === "function" ? 0 : 1)' >/dev/null 2>&1; then
+    hash="$(ADMIN_PASSWORD="$password" node scripts/hash-password.js)"
   else
-    echo "OpenSSL not found; using Docker to generate the admin password hash."
+    echo "Node.js 24.7+ not found; using Docker to generate the admin password hash."
     hash="$(
-      docker run --rm -e ADMIN_PASSWORD="$password" node:20-alpine node -e '
-const crypto = require("crypto");
-const password = process.env.ADMIN_PASSWORD || "";
-const chars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const salt = crypto.randomBytes(6).toString("base64").replace(/[+/=]/g, ".").slice(0, 8);
-function to64(value, length) {
-  let output = "";
-  while (length > 0) {
-    output += chars[value & 0x3f];
-    value >>= 6;
-    length -= 1;
-  }
-  return output;
-}
-function md5(input) {
-  return crypto.createHash("md5").update(input).digest();
-}
-function apr1(password, salt) {
-  const magic = "$apr1$";
-  const salt8 = salt.replace(/^\$apr1\$/, "").split("$")[0].slice(0, 8);
-  let ctx = Buffer.concat([Buffer.from(password + magic + salt8, "utf8"), Buffer.alloc(0)]);
-  let final = md5(password + salt8 + password);
-  for (let remaining = password.length; remaining > 0; remaining -= 16) {
-    ctx = Buffer.concat([ctx, final.subarray(0, Math.min(16, remaining))]);
-  }
-  for (let bits = password.length; bits > 0; bits >>= 1) {
-    ctx = Buffer.concat([ctx, Buffer.from(bits & 1 ? "\x00" : password[0], "binary")]);
-  }
-  final = md5(ctx);
-  for (let i = 0; i < 1000; i += 1) {
-    const parts = [];
-    parts.push(Buffer.from(i % 2 ? password : final));
-    if (i % 3) parts.push(Buffer.from(salt8));
-    if (i % 7) parts.push(Buffer.from(password));
-    parts.push(Buffer.from(i % 2 ? final : password));
-    final = md5(Buffer.concat(parts));
-  }
-  const encoded =
-    to64((final[0] << 16) | (final[6] << 8) | final[12], 4) +
-    to64((final[1] << 16) | (final[7] << 8) | final[13], 4) +
-    to64((final[2] << 16) | (final[8] << 8) | final[14], 4) +
-    to64((final[3] << 16) | (final[9] << 8) | final[15], 4) +
-    to64((final[4] << 16) | (final[10] << 8) | final[5], 4) +
-    to64(final[11], 2);
-  return `${magic}${salt8}$${encoded}`;
-}
-process.stdout.write(apr1(password, salt));
-'
+      docker run --rm \
+        -e ADMIN_PASSWORD="$password" \
+        -v "$(pwd -P):/work:ro" \
+        -w /work \
+        node:24-alpine \
+        node scripts/hash-password.js
     )"
   fi
 
@@ -118,7 +76,7 @@ process.stdout.write(apr1(password, salt));
 read_runtime_var() {
   local key="$1"
   [ -f "$RUNTIME_ENV_FILE" ] || return 0
-  grep -E "^${key}=" "$RUNTIME_ENV_FILE" | tail -n 1 | cut -d= -f2-
+  grep -E "^${key}=" "$RUNTIME_ENV_FILE" | tail -n 1 | cut -d= -f2- || true
 }
 
 create_session_secret() {
@@ -137,7 +95,7 @@ create_session_secret() {
   if has_cmd openssl; then
     openssl rand -hex 32
   else
-    docker run --rm node:20-alpine node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))'
+    docker run --rm node:24-alpine node -e 'process.stdout.write(require("crypto").randomBytes(32).toString("hex"))'
   fi
 }
 
@@ -155,6 +113,7 @@ fi
 require_file "docker-compose.yml"
 require_file "package.json"
 require_file "server.js"
+require_file "scripts/hash-password.js"
 
 mkdir -p "$MEDIA_DIR"
 
@@ -181,10 +140,25 @@ export ADMIN_USER
 LAN_IPS="$(local_ips | awk '!seen[$0]++')"
 PLAYER_HOST="$(printf '%s\n' "$LAN_IPS" | head -n 1)"
 SESSION_SECRET="$(create_session_secret)"
+EXISTING_TRUST_PROXY="$(read_runtime_var "TRUST_PROXY")"
+EXISTING_COOKIE_SECURE="$(read_runtime_var "COOKIE_SECURE")"
+EXISTING_UPLOAD_MAX_FILES="$(read_runtime_var "UPLOAD_MAX_FILES")"
+EXISTING_UPLOAD_MAX_FILE_MB="$(read_runtime_var "UPLOAD_MAX_FILE_MB")"
+EXISTING_UPLOAD_MAX_TOTAL_MB="$(read_runtime_var "UPLOAD_MAX_TOTAL_MB")"
+TRUST_PROXY="${TRUST_PROXY:-${EXISTING_TRUST_PROXY:-false}}"
+COOKIE_SECURE="${COOKIE_SECURE:-${EXISTING_COOKIE_SECURE:-false}}"
+UPLOAD_MAX_FILES="${UPLOAD_MAX_FILES:-${EXISTING_UPLOAD_MAX_FILES:-10}}"
+UPLOAD_MAX_FILE_MB="${UPLOAD_MAX_FILE_MB:-${EXISTING_UPLOAD_MAX_FILE_MB:-250}}"
+UPLOAD_MAX_TOTAL_MB="${UPLOAD_MAX_TOTAL_MB:-${EXISTING_UPLOAD_MAX_TOTAL_MB:-1000}}"
 
 cat > "$RUNTIME_ENV_FILE" <<EOF
 PLAYER_HOST=$PLAYER_HOST
 SESSION_SECRET=$SESSION_SECRET
+TRUST_PROXY=$TRUST_PROXY
+COOKIE_SECURE=$COOKIE_SECURE
+UPLOAD_MAX_FILES=$UPLOAD_MAX_FILES
+UPLOAD_MAX_FILE_MB=$UPLOAD_MAX_FILE_MB
+UPLOAD_MAX_TOTAL_MB=$UPLOAD_MAX_TOTAL_MB
 EOF
 echo "Wrote $RUNTIME_ENV_FILE"
 

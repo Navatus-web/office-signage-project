@@ -9,6 +9,7 @@ const chokidar = require("chokidar");
 const session = require("express-session");
 const multer = require("multer");
 const { summarizeSystemHealth } = require("./lib/health");
+const { hashPassword, verifyPassword } = require("./lib/password");
 const { getPlayerSettingsPayload, getTransitionMode } = require("./lib/transition");
 
 const app = express();
@@ -22,6 +23,9 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const MEDIA_DIR = path.resolve(process.env.MEDIA_DIR || path.join(PUBLIC_DIR, "media"));
 const SETTINGS_FILE = path.resolve(process.env.SETTINGS_FILE || path.join(__dirname, "settings.json"));
 const HTPASSWD_FILE = path.resolve(process.env.HTPASSWD_FILE || path.join(__dirname, "admin.htpasswd"));
+const UPLOAD_TMP_DIR = path.resolve(
+  process.env.UPLOAD_TMP_DIR || path.join(os.tmpdir(), "office-signage-upload-quarantine")
+);
 
 // ----------------------------
 // Config
@@ -41,10 +45,41 @@ const CHOKIDAR_INTERVAL = Number(process.env.CHOKIDAR_INTERVAL || 500);
 const ADMIN_USER = String(process.env.ADMIN_USER || "admin");
 const PLAYER_HOST = String(process.env.PLAYER_HOST || "").trim();
 const DEFAULT_SESSION_SECRET = "change-me-in-prod";
+const TRUST_PROXY = ["1", "true", "yes"].includes(String(process.env.TRUST_PROXY || "false").toLowerCase());
+const COOKIE_SECURE_VALUE = String(process.env.COOKIE_SECURE || "false").toLowerCase();
+const COOKIE_SECURE = COOKIE_SECURE_VALUE === "auto"
+  ? "auto"
+  : ["1", "true", "yes"].includes(COOKIE_SECURE_VALUE);
 const ALLOWED_ORIGINS = String(process.env.ALLOWED_ORIGINS || "")
   .split(",")
   .map((origin) => origin.trim())
   .filter(Boolean);
+
+function getBoundedInteger(value, fallback, minimum, maximum) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) return fallback;
+  return parsed;
+}
+
+const UPLOAD_MAX_FILE_MB = getBoundedInteger(process.env.UPLOAD_MAX_FILE_MB, 250, 1, 2048);
+const UPLOAD_MAX_TOTAL_MB = getBoundedInteger(process.env.UPLOAD_MAX_TOTAL_MB, 1000, 1, 4096);
+const UPLOAD_MAX_FILES = getBoundedInteger(process.env.UPLOAD_MAX_FILES, 10, 1, 20);
+const UPLOAD_MAX_FILE_BYTES = UPLOAD_MAX_FILE_MB * 1024 * 1024;
+const UPLOAD_MAX_TOTAL_BYTES = UPLOAD_MAX_TOTAL_MB * 1024 * 1024;
+
+const imageExt = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
+const videoExt = new Set([".mp4", ".webm", ".mov"]);
+const mediaExt = new Set([...imageExt, ...videoExt]);
+const mediaMimeTypes = new Map([
+  [".jpg", new Set(["image/jpeg"])],
+  [".jpeg", new Set(["image/jpeg"])],
+  [".png", new Set(["image/png"])],
+  [".webp", new Set(["image/webp"])],
+  [".gif", new Set(["image/gif"])],
+  [".mp4", new Set(["video/mp4"])],
+  [".webm", new Set(["video/webm"])],
+  [".mov", new Set(["video/quicktime", "video/mp4"])],
+]);
 
 if (SESSION_SECRET === DEFAULT_SESSION_SECRET) {
   console.warn("WARNING: SESSION_SECRET is using the development fallback. Run the installer or set SESSION_SECRET.");
@@ -107,47 +142,70 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 app.disable("x-powered-by");
 
+if (TRUST_PROXY) {
+  app.set("trust proxy", 1);
+}
+
 app.use((req, res, next) => {
   res.setHeader("X-Content-Type-Options", "nosniff");
   res.setHeader("Referrer-Policy", "same-origin");
   res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  if (req.secure) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000");
+  }
   next();
 });
 
 // ----------------------------
 // File Upload
 // ----------------------------
+for (const directory of [MEDIA_DIR, UPLOAD_TMP_DIR]) {
+  try {
+    fs.mkdirSync(directory, { recursive: true });
+  } catch (err) {
+    console.warn(`Could not create ${directory}:`, err.message);
+  }
+}
+
 const upload = multer({
   storage: multer.diskStorage({
-    destination: MEDIA_DIR,
+    destination: UPLOAD_TMP_DIR,
     filename: (req, file, cb) => {
-      cb(null, uniqueMediaFilename(file.originalname));
+      cb(null, crypto.randomUUID());
     },
   }),
   fileFilter: (req, file, cb) => {
     const filename = sanitizeMediaFilename(file.originalname);
     const ext = path.extname(filename).toLowerCase();
+    const allowedMimeTypes = mediaMimeTypes.get(ext);
 
-    if (!imageExt.has(ext) && !videoExt.has(ext)) {
-      return cb(new Error("Only image and video files are allowed"));
+    if (!allowedMimeTypes) {
+      return cb(new Error(`Unsupported file extension: ${ext || "none"}`));
+    }
+
+    if (!allowedMimeTypes.has(String(file.mimetype || "").toLowerCase())) {
+      return cb(new Error(`File type does not match its extension: ${file.originalname}`));
     }
 
     return cb(null, true);
   },
   limits: {
-    fileSize: 1024 * 1024 * 500,
-    files: 10,
-  }, // 500MB max, 10 files per upload
+    fileSize: UPLOAD_MAX_FILE_BYTES,
+    files: UPLOAD_MAX_FILES,
+    fields: 0,
+    headerPairs: 100,
+  },
 });
 
 const sessionMiddleware = session({
+  name: "office-signage.sid",
   secret: SESSION_SECRET,
   resave: false,
   saveUninitialized: false,
   cookie: {
     httpOnly: true,
     sameSite: "lax",
-    // secure: true, // enable behind HTTPS
+    secure: COOKIE_SECURE,
     maxAge: 12 * 60 * 60 * 1000, // 12 hours
   },
 });
@@ -166,13 +224,6 @@ app.use((req, res, next) => {
   }
   next();
 });
-
-// Ensure media folder exists
-try {
-  fs.mkdirSync(MEDIA_DIR, { recursive: true });
-} catch (err) {
-  console.warn("⚠️ Could not create media dir:", err.message);
-}
 
 // Explicit /media static route with no caching
 app.use(
@@ -203,75 +254,6 @@ app.use(express.static(PUBLIC_DIR));
 // ----------------------------
 let htpasswd = null;
 
-function to64(value, length) {
-  const chars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-  let output = "";
-  let current = value;
-
-  while (length > 0) {
-    output += chars[current & 0x3f];
-    current >>= 6;
-    length -= 1;
-  }
-
-  return output;
-}
-
-function md5(input) {
-  return crypto.createHash("md5").update(input).digest();
-}
-
-function createApr1Salt() {
-  return crypto
-    .randomBytes(6)
-    .toString("base64")
-    .replace(/[+/=]/g, ".")
-    .slice(0, 8);
-}
-
-function apr1(password, salt) {
-  const magic = "$apr1$";
-  const salt8 = salt.replace(/^\$apr1\$/, "").split("$")[0].slice(0, 8);
-
-  let ctx = Buffer.concat([
-    Buffer.from(password + magic + salt8, "utf8"),
-    Buffer.alloc(0),
-  ]);
-
-  let final = md5(password + salt8 + password);
-
-  for (let remaining = password.length; remaining > 0; remaining -= 16) {
-    ctx = Buffer.concat([ctx, final.subarray(0, Math.min(16, remaining))]);
-  }
-
-  for (let bits = password.length; bits > 0; bits >>= 1) {
-    ctx = Buffer.concat([ctx, Buffer.from(bits & 1 ? "\x00" : password[0], "binary")]);
-  }
-
-  final = md5(ctx);
-
-  for (let i = 0; i < 1000; i += 1) {
-    const parts = [];
-
-    parts.push(Buffer.from(i % 2 ? password : final));
-    if (i % 3) parts.push(Buffer.from(salt8));
-    if (i % 7) parts.push(Buffer.from(password));
-    parts.push(Buffer.from(i % 2 ? final : password));
-
-    final = md5(Buffer.concat(parts));
-  }
-
-  const encoded =
-    to64((final[0] << 16) | (final[6] << 8) | final[12], 4) +
-    to64((final[1] << 16) | (final[7] << 8) | final[13], 4) +
-    to64((final[2] << 16) | (final[8] << 8) | final[14], 4) +
-    to64((final[3] << 16) | (final[9] << 8) | final[15], 4) +
-    to64((final[4] << 16) | (final[10] << 8) | final[5], 4) +
-    to64(final[11], 2);
-
-  return `${magic}${salt8}$${encoded}`;
-}
-
 function createHtpasswdAuth(filePath) {
   return {
     async authenticate(username, password) {
@@ -281,15 +263,11 @@ function createHtpasswdAuth(filePath) {
         .map((entry) => entry.trim())
         .find((entry) => entry && !entry.startsWith("#") && entry.startsWith(`${username}:`));
 
-      if (!line) return false;
+      if (!line) return { valid: false, needsRehash: false };
 
       const hash = line.slice(username.length + 1);
 
-      if (hash.startsWith("$apr1$")) {
-        return apr1(password, hash) === hash;
-      }
-
-      throw new Error(`Unsupported htpasswd hash format for user ${username}`);
+      return verifyPassword(password, hash);
     },
   };
 }
@@ -305,8 +283,8 @@ function initHtpasswd() {
   htpasswd = createHtpasswdAuth(HTPASSWD_FILE);
 }
 
-function saveHtpasswdPassword(password) {
-  const hash = apr1(password, createApr1Salt());
+async function saveHtpasswdPassword(password) {
+  const hash = await hashPassword(password);
   fs.writeFileSync(HTPASSWD_FILE, `${ADMIN_USER}:${hash}\n`, "utf8");
   initHtpasswd();
 }
@@ -386,11 +364,16 @@ function requireCsrf(req, res, next) {
 const loginLimiter = new Map(); // ip -> { fails, lockUntil }
 
 function getClientIp(req) {
-  return (
-    req.headers["x-forwarded-for"]?.toString().split(",")[0].trim() ||
-    req.socket.remoteAddress ||
-    "unknown"
-  );
+  return req.ip || req.socket.remoteAddress || "unknown";
+}
+
+function regenerateSession(req) {
+  return new Promise((resolve, reject) => {
+    req.session.regenerate((err) => {
+      if (err) reject(err);
+      else resolve();
+    });
+  });
 }
 
 function isLocked(ip) {
@@ -455,7 +438,7 @@ app.get("/admin-login", (req, res) => {
       <input
         name="pin"
         type="password"
-        maxlength="20"
+        maxlength="64"
         placeholder="PIN / Password"
         autocomplete="current-password"
         required
@@ -475,12 +458,22 @@ app.post("/admin-login", async (req, res) => {
   if (isLocked(ip)) return res.redirect("/admin-login?lock=1");
   if (!htpasswd) return res.redirect("/admin-login?err=1");
 
-  const password = String(req.body.pin || "").trim();
+  const password = String(req.body.pin || "");
 
   try {
-    const ok = await htpasswd.authenticate(ADMIN_USER, password);
+    const authResult = await htpasswd.authenticate(ADMIN_USER, password);
 
-    if (ok) {
+    if (authResult.valid) {
+      if (authResult.needsRehash) {
+        try {
+          await saveHtpasswdPassword(password);
+          console.log("Migrated admin password hash to Argon2id");
+        } catch (err) {
+          console.warn("Could not migrate admin password hash:", err.message);
+        }
+      }
+
+      await regenerateSession(req);
       req.session.isAdmin = true;
       clearFails(ip);
       return res.redirect("/admin");
@@ -508,10 +501,6 @@ app.use("/api", requireCsrf);
 // ----------------------------
 // Playlist
 // ----------------------------
-const imageExt = new Set([".jpg", ".jpeg", ".png", ".gif", ".webp"]);
-const videoExt = new Set([".mp4", ".webm", ".mov"]);
-const mediaExt = new Set([...imageExt, ...videoExt]);
-
 function isJunk(name) {
   const lower = name.toLowerCase();
   return (
@@ -581,11 +570,30 @@ function isLikelyMediaFile(filePath, filename) {
 
 function validateUploadedMediaFiles(files) {
   for (const file of files) {
-    const ext = path.extname(file.filename).toLowerCase();
+    const safeName = sanitizeMediaFilename(file.originalname);
+    const ext = path.extname(safeName).toLowerCase();
 
-    if (!mediaExt.has(ext) || !isLikelyMediaFile(file.path, file.filename)) {
+    if (!mediaExt.has(ext) || !isLikelyMediaFile(file.path, safeName)) {
       throw new Error(`Unsupported or invalid media file: ${file.originalname}`);
     }
+  }
+}
+
+function moveUploadedMediaFiles(files) {
+  for (const file of files) {
+    const finalName = uniqueMediaFilename(file.originalname);
+    const finalPath = path.join(MEDIA_DIR, finalName);
+
+    try {
+      fs.renameSync(file.path, finalPath);
+    } catch (err) {
+      if (err.code !== "EXDEV") throw err;
+      fs.copyFileSync(file.path, finalPath, fs.constants.COPYFILE_EXCL);
+      fs.rmSync(file.path, { force: true });
+    }
+
+    file.filename = finalName;
+    file.path = finalPath;
   }
 }
 
@@ -915,7 +923,7 @@ app.post("/api/settings", requireAdmin, (req, res) => {
   res.json(settings);
 });
 
-app.post("/api/admin-password", requireAdmin, (req, res) => {
+app.post("/api/admin-password", requireAdmin, async (req, res) => {
   const password = String(req.body?.password || "");
   const confirmPassword = String(req.body?.confirmPassword || "");
 
@@ -928,7 +936,7 @@ app.post("/api/admin-password", requireAdmin, (req, res) => {
   }
 
   try {
-    saveHtpasswdPassword(password);
+    await saveHtpasswdPassword(password);
   } catch (err) {
     console.error("❌ Failed to update admin password:", err.message);
     return res.status(500).json({ error: "Failed to update admin password" });
@@ -1017,9 +1025,13 @@ app.post("/api/media-duration/bulk", requireAdmin, (req, res) => {
 // File Upload API
 // ----------------------------
 app.post("/api/upload", requireAdmin, (req, res, next) => {
-  upload.array("files", 10)(req, res, (err) => {
+  upload.array("files", UPLOAD_MAX_FILES)(req, res, (err) => {
     if (err) {
-      return res.status(400).json({ error: err.message || "Upload failed" });
+      cleanupUploadedFiles(Array.isArray(req.files) ? req.files : []);
+      const message = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE"
+        ? `Each file must be ${UPLOAD_MAX_FILE_MB} MB or smaller`
+        : err.message || "Upload failed";
+      return res.status(400).json({ error: message });
     }
 
     return next();
@@ -1032,7 +1044,13 @@ app.post("/api/upload", requireAdmin, (req, res, next) => {
   }
 
   try {
+    const totalBytes = files.reduce((total, file) => total + Number(file.size || 0), 0);
+    if (totalBytes > UPLOAD_MAX_TOTAL_BYTES) {
+      throw new Error(`Upload must be ${UPLOAD_MAX_TOTAL_MB} MB or smaller in total`);
+    }
+
     validateUploadedMediaFiles(files);
+    moveUploadedMediaFiles(files);
   } catch (err) {
     cleanupUploadedFiles(files);
     return res.status(400).json({ error: err.message });

@@ -15,6 +15,7 @@ let tempDir;
 let mediaDir;
 let settingsFile;
 let htpasswdFile;
+let uploadTmpDir;
 let adminCookie;
 let csrfToken;
 let serverOutput = "";
@@ -131,6 +132,7 @@ test.before(async () => {
   mediaDir = path.join(tempDir, "media");
   settingsFile = path.join(tempDir, "settings.json");
   htpasswdFile = path.join(tempDir, "admin.htpasswd");
+  uploadTmpDir = path.join(tempDir, "upload-quarantine");
 
   fs.mkdirSync(mediaDir, { recursive: true });
   fs.writeFileSync(settingsFile, JSON.stringify({
@@ -150,6 +152,11 @@ test.before(async () => {
       MEDIA_DIR: mediaDir,
       SETTINGS_FILE: settingsFile,
       HTPASSWD_FILE: htpasswdFile,
+      UPLOAD_TMP_DIR: uploadTmpDir,
+      UPLOAD_MAX_FILE_MB: "1",
+      UPLOAD_MAX_TOTAL_MB: "2",
+      TRUST_PROXY: "true",
+      COOKIE_SECURE: "auto",
     },
     windowsHide: true,
     stdio: ["ignore", "pipe", "pipe"],
@@ -212,7 +219,7 @@ async function adminFetch(pathname, options = {}) {
   const method = String(options.method || "GET").toUpperCase();
   if (!["GET", "HEAD", "OPTIONS"].includes(method)) {
     headers.set("X-CSRF-Token", auth.csrfToken);
-    if (options.body && !headers.has("Content-Type")) {
+    if (options.body && !(options.body instanceof FormData) && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
   }
@@ -249,12 +256,103 @@ test("admin-only device API rejects anonymous requests", async () => {
   assert.match(body.error, /Admin login required/);
 });
 
+test("trusted HTTPS proxy requests receive HSTS and a secure session cookie", async () => {
+  const res = await fetch(`${BASE_URL}/admin-login`, {
+    method: "POST",
+    redirect: "manual",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Forwarded-Proto": "https",
+    },
+    body: new URLSearchParams({ pin: ADMIN_PASSWORD }),
+  });
+
+  assert.equal(res.status, 302);
+  assert.equal(res.headers.get("strict-transport-security"), "max-age=31536000");
+  assert.match(res.headers.get("set-cookie"), /; Secure(?:;|$)/u);
+});
+
 test("authenticated admin can list display devices", async () => {
   const res = await adminFetch("/api/devices");
   assert.equal(res.status, 200);
 
   const body = await res.json();
   assert.equal(Array.isArray(body.devices), true);
+});
+
+test("successful legacy login migrates the admin hash to Argon2id", async () => {
+  await loginAdmin();
+  const storedCredential = fs.readFileSync(htpasswdFile, "utf8");
+  assert.match(storedCredential, /^admin:\$argon2id\$/u);
+  assert.doesNotMatch(storedCredential, /\$apr1\$/u);
+});
+
+test("valid media upload is promoted from quarantine into the public media folder", async () => {
+  const form = new FormData();
+  form.append(
+    "files",
+    new Blob([Buffer.from("89504e470d0a1a0a0000000d49484452", "hex")], { type: "image/png" }),
+    "Board screen.png"
+  );
+
+  const res = await adminFetch("/api/upload", { method: "POST", body: form });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.deepEqual(body.filenames, ["Board-screen.png"]);
+  assert.equal(fs.existsSync(path.join(mediaDir, "Board-screen.png")), true);
+  assert.deepEqual(fs.readdirSync(uploadTmpDir), []);
+});
+
+test("upload rejects a MIME type that does not match the extension", async () => {
+  const form = new FormData();
+  form.append("files", new Blob(["not an image"], { type: "text/plain" }), "mismatch.png");
+
+  const res = await adminFetch("/api/upload", { method: "POST", body: form });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /does not match its extension/u);
+  assert.equal(fs.existsSync(path.join(mediaDir, "mismatch.png")), false);
+  assert.deepEqual(fs.readdirSync(uploadTmpDir), []);
+});
+
+test("upload rejects invalid media signatures without exposing the file", async () => {
+  const form = new FormData();
+  form.append("files", new Blob(["not a real png"], { type: "image/png" }), "invalid.png");
+
+  const res = await adminFetch("/api/upload", { method: "POST", body: form });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /invalid media file/u);
+  assert.equal(fs.existsSync(path.join(mediaDir, "invalid.png")), false);
+  assert.deepEqual(fs.readdirSync(uploadTmpDir), []);
+});
+
+test("upload enforces the configured per-file size limit", async () => {
+  const oversized = Buffer.alloc((1024 * 1024) + 1);
+  Buffer.from("89504e470d0a1a0a", "hex").copy(oversized);
+  const form = new FormData();
+  form.append("files", new Blob([oversized], { type: "image/png" }), "oversized.png");
+
+  const res = await adminFetch("/api/upload", { method: "POST", body: form });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /1 MB or smaller/u);
+  assert.equal(fs.existsSync(path.join(mediaDir, "oversized.png")), false);
+  assert.deepEqual(fs.readdirSync(uploadTmpDir), []);
+});
+
+test("upload enforces the configured aggregate size limit", async () => {
+  const form = new FormData();
+  for (let index = 1; index <= 3; index += 1) {
+    const payload = Buffer.alloc(750 * 1024);
+    Buffer.from("89504e470d0a1a0a", "hex").copy(payload);
+    form.append("files", new Blob([payload], { type: "image/png" }), `batch-${index}.png`);
+  }
+
+  const res = await adminFetch("/api/upload", { method: "POST", body: form });
+  assert.equal(res.status, 400);
+  assert.match((await res.json()).error, /2 MB or smaller in total/u);
+  assert.equal(fs.existsSync(path.join(mediaDir, "batch-1.png")), false);
+  assert.equal(fs.existsSync(path.join(mediaDir, "batch-2.png")), false);
+  assert.equal(fs.existsSync(path.join(mediaDir, "batch-3.png")), false);
+  assert.deepEqual(fs.readdirSync(uploadTmpDir), []);
 });
 
 test("bulk duration updates only valid image files", async () => {

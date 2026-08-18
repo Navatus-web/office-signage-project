@@ -49,8 +49,8 @@ function Read-AdminPassword {
     $PasswordText = ConvertFrom-SecureStringText $Password
     $ConfirmText = ConvertFrom-SecureStringText $Confirm
 
-    if ([string]::IsNullOrEmpty($PasswordText)) {
-      Write-Host "Password cannot be empty."
+    if ($PasswordText.Length -lt 4 -or $PasswordText.Length -gt 64) {
+      Write-Host "Password must be between 4 and 64 characters."
     }
     elseif ($PasswordText -ne $ConfirmText) {
       Write-Host "Passwords do not match."
@@ -71,83 +71,33 @@ function ConvertFrom-SecureStringText($SecureString) {
   }
 }
 
-function New-Apr1Htpasswd($Password) {
-  $NodeScript = @'
-const crypto = require("crypto");
-const password = process.env.ADMIN_PASSWORD || "";
-const chars = "./0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const salt = crypto.randomBytes(6).toString("base64").replace(/[+/=]/g, ".").slice(0, 8);
-function to64(value, length) {
-  let output = "";
-  while (length > 0) {
-    output += chars[value & 0x3f];
-    value >>= 6;
-    length -= 1;
-  }
-  return output;
-}
-function md5(input) {
-  return crypto.createHash("md5").update(input).digest();
-}
-function apr1(password, salt) {
-  const magic = "$apr1$";
-  const salt8 = salt.replace(/^\$apr1\$/, "").split("$")[0].slice(0, 8);
-  let ctx = Buffer.concat([Buffer.from(password + magic + salt8, "utf8"), Buffer.alloc(0)]);
-  let final = md5(password + salt8 + password);
-  for (let remaining = password.length; remaining > 0; remaining -= 16) {
-    ctx = Buffer.concat([ctx, final.subarray(0, Math.min(16, remaining))]);
-  }
-  for (let bits = password.length; bits > 0; bits >>= 1) {
-    ctx = Buffer.concat([ctx, Buffer.from(bits & 1 ? "\x00" : password[0], "binary")]);
-  }
-  final = md5(ctx);
-  for (let i = 0; i < 1000; i += 1) {
-    const parts = [];
-    parts.push(Buffer.from(i % 2 ? password : final));
-    if (i % 3) parts.push(Buffer.from(salt8));
-    if (i % 7) parts.push(Buffer.from(password));
-    parts.push(Buffer.from(i % 2 ? final : password));
-    final = md5(Buffer.concat(parts));
-  }
-  const encoded =
-    to64((final[0] << 16) | (final[6] << 8) | final[12], 4) +
-    to64((final[1] << 16) | (final[7] << 8) | final[13], 4) +
-    to64((final[2] << 16) | (final[8] << 8) | final[14], 4) +
-    to64((final[3] << 16) | (final[9] << 8) | final[15], 4) +
-    to64((final[4] << 16) | (final[10] << 8) | final[5], 4) +
-    to64(final[11], 2);
-  return `${magic}${salt8}$${encoded}`;
-}
-process.stdout.write(apr1(password, salt));
-'@
-
+function New-Argon2Htpasswd($Password) {
   $PreviousPassword = $env:ADMIN_PASSWORD
   $env:ADMIN_PASSWORD = $Password
   try {
-    $TempFile = [System.IO.Path]::Combine([System.IO.Path]::GetTempPath(), ([System.IO.Path]::GetRandomFileName() + ".js"))
-    [System.IO.File]::WriteAllText($TempFile, $NodeScript, [System.Text.Encoding]::UTF8)
+    $Hash = $null
     $NodeCmd = Get-Command node -ErrorAction SilentlyContinue
     if ($NodeCmd) {
-      $Hash = & node $TempFile 2>$null
-      $Last = $LASTEXITCODE
+      & node -e 'process.exit(typeof require("node:crypto").argon2 === "function" ? 0 : 1)' 2>$null
+      if ($LASTEXITCODE -eq 0) {
+        $Hash = & node .\scripts\hash-password.js 2>$null
+      }
     }
-    else {
-      $Hash = docker run --rm -e ADMIN_PASSWORD -v "$($TempFile):/hash-password.js:ro" node:20-alpine node /hash-password.js
-      $Last = $LASTEXITCODE
+
+    if ([string]::IsNullOrWhiteSpace($Hash)) {
+      $ProjectRoot = (Get-Location).Path
+      $Hash = docker run --rm -e ADMIN_PASSWORD -v "${ProjectRoot}:/work:ro" -w /work node:24-alpine node scripts/hash-password.js
     }
-    Remove-Item -Force $TempFile -ErrorAction SilentlyContinue
-    $env:ADMIN_PASSWORD = $PreviousPassword
-    $LASTEXITCODE = $Last
   }
   finally {
     $env:ADMIN_PASSWORD = $PreviousPassword
   }
 
   if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($Hash)) {
-    Die "Failed to generate admin password hash with Node.js or Docker."
+    Die "Failed to generate the Argon2id admin password hash with Node.js or Docker."
   }
 
-  "$AdminUser`:$Hash" | Out-File -Encoding ascii $HtpasswdFile
+  "$AdminUser`:$($Hash.Trim())" | Out-File -Encoding ascii $HtpasswdFile
   Write-Host "Created $HtpasswdFile"
 }
 
@@ -193,6 +143,7 @@ catch {
 Require-File ".\docker-compose.yml"
 Require-File ".\package.json"
 Require-File ".\server.js"
+Require-File ".\scripts\hash-password.js"
 
 New-Item -ItemType Directory -Force -Path $MediaDir | Out-Null
 
@@ -207,7 +158,7 @@ if ($ResetPassword -or -not (Test-Path $HtpasswdFile)) {
   if ([string]::IsNullOrEmpty($AdminPassword)) {
     $AdminPassword = Read-AdminPassword
   }
-  New-Apr1Htpasswd $AdminPassword
+  New-Argon2Htpasswd $AdminPassword
 }
 else {
   Write-Host "Using existing $HtpasswdFile"
@@ -222,9 +173,29 @@ $env:ADMIN_USER = $AdminUser
 $LocalIps = Get-LocalIPv4Addresses
 $PlayerHost = if ($LocalIps) { $LocalIps | Select-Object -First 1 } else { "" }
 $SessionSecret = New-SessionSecret
+$TrustProxy = $env:TRUST_PROXY
+if ([string]::IsNullOrWhiteSpace($TrustProxy)) { $TrustProxy = Get-RuntimeEnvValue "TRUST_PROXY" }
+if ([string]::IsNullOrWhiteSpace($TrustProxy)) { $TrustProxy = "false" }
+$CookieSecure = $env:COOKIE_SECURE
+if ([string]::IsNullOrWhiteSpace($CookieSecure)) { $CookieSecure = Get-RuntimeEnvValue "COOKIE_SECURE" }
+if ([string]::IsNullOrWhiteSpace($CookieSecure)) { $CookieSecure = "false" }
+$UploadMaxFiles = $env:UPLOAD_MAX_FILES
+if ([string]::IsNullOrWhiteSpace($UploadMaxFiles)) { $UploadMaxFiles = Get-RuntimeEnvValue "UPLOAD_MAX_FILES" }
+if ([string]::IsNullOrWhiteSpace($UploadMaxFiles)) { $UploadMaxFiles = "10" }
+$UploadMaxFileMb = $env:UPLOAD_MAX_FILE_MB
+if ([string]::IsNullOrWhiteSpace($UploadMaxFileMb)) { $UploadMaxFileMb = Get-RuntimeEnvValue "UPLOAD_MAX_FILE_MB" }
+if ([string]::IsNullOrWhiteSpace($UploadMaxFileMb)) { $UploadMaxFileMb = "250" }
+$UploadMaxTotalMb = $env:UPLOAD_MAX_TOTAL_MB
+if ([string]::IsNullOrWhiteSpace($UploadMaxTotalMb)) { $UploadMaxTotalMb = Get-RuntimeEnvValue "UPLOAD_MAX_TOTAL_MB" }
+if ([string]::IsNullOrWhiteSpace($UploadMaxTotalMb)) { $UploadMaxTotalMb = "1000" }
 @(
   "PLAYER_HOST=$PlayerHost"
   "SESSION_SECRET=$SessionSecret"
+  "TRUST_PROXY=$TrustProxy"
+  "COOKIE_SECURE=$CookieSecure"
+  "UPLOAD_MAX_FILES=$UploadMaxFiles"
+  "UPLOAD_MAX_FILE_MB=$UploadMaxFileMb"
+  "UPLOAD_MAX_TOTAL_MB=$UploadMaxTotalMb"
 ) | Out-File -Encoding ascii $RuntimeEnvFile
 Write-Host "Wrote $RuntimeEnvFile"
 

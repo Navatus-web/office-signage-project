@@ -1,10 +1,14 @@
 {
   "name": "office-signage",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Local LAN digital signage system",
   "main": "server.js",
+  "engines": {
+    "node": ">=24.7.0"
+  },
   "scripts": {
     "agent:loop": "node scripts/agent-loop.js",
+    "hash:password": "node scripts/hash-password.js",
     "start": "node server.js",
     "test": "node --check server.js && node --test"
   },

@@ -1,7 +1,7 @@
 
 # Office Signage Project
 
-Version: `1.0.3`
+Version: `1.0.4`
 
 A lightweight, real-time **digital signage system** built with **Node.js**, **Socket.IO**, and **Docker**.
 
@@ -18,7 +18,7 @@ Designed to run on **any PC** (Windows, macOS, or Linux) and keep multiple displ
 -  Per-image display duration overrides
 -  Drag-and-drop media ordering with saved playlist priority
 -  Live preview panel inside the admin console
--  Multi-file uploads up to 10 files at a time
+-  Validated multi-file uploads for JPG, JPEG, PNG, WEBP, GIF, MP4, WEBM, and MOV media
 -  Per-file media removal and confirmation-protected media clearing
 -  Global pause/resume control for all connected displays
 -  Built-in admin password reset flow
@@ -54,7 +54,7 @@ Windows PowerShell:
 .\install.ps1
 ```
 
-The installer creates the media folder, settings file, admin password file, and a local runtime env file used to pass the host LAN IP into Docker. It then builds and starts the container.
+The installer creates the media folder, settings file, an Argon2id admin password file, and a local runtime env file used to pass the host LAN IP into Docker. It then builds and starts the container. Existing APR1 credentials remain usable and are upgraded to Argon2id automatically after the next successful login.
 
 Default URLs:
 
@@ -83,6 +83,36 @@ docker compose logs -f signage
 docker compose restart signage
 docker compose down
 ```
+
+## Security Configuration
+
+Uploads are staged outside the public media directory and are only moved into it after the extension, browser-supplied MIME type, and file signature all pass validation. The defaults allow 10 files per request, 250 MB per file, and 1,000 MB total. You can tune the limits before running the installer:
+
+```sh
+UPLOAD_MAX_FILES=6 UPLOAD_MAX_FILE_MB=150 UPLOAD_MAX_TOTAL_MB=600 ./install.sh
+```
+
+```powershell
+$env:UPLOAD_MAX_FILES="6"; $env:UPLOAD_MAX_FILE_MB="150"; $env:UPLOAD_MAX_TOTAL_MB="600"; .\install.ps1
+```
+
+When the admin interface is served through one trusted HTTPS reverse proxy, enable proxy awareness and secure cookies. Use `COOKIE_SECURE=true` when admin access is HTTPS-only, or `auto` when retaining direct HTTP access on the isolated LAN:
+
+```sh
+TRUST_PROXY=true COOKIE_SECURE=true ./install.sh
+```
+
+```powershell
+$env:TRUST_PROXY="true"; $env:COOKIE_SECURE="true"; .\install.ps1
+```
+
+For Tailscale, the service can remain on localhost and be exposed over your tailnet with HTTPS:
+
+```sh
+tailscale serve --bg localhost:3000
+```
+
+Only enable `TRUST_PROXY` when requests actually pass through a trusted reverse proxy. Direct HTTP remains the default for isolated LAN deployments.
 
 ## Update For Presentation
 
@@ -115,6 +145,13 @@ $env:ADMIN_PASSWORD="your-password"; .\install.ps1
 ---
 
 ## Release Notes
+
+### v1.0.4
+
+- Added private upload quarantine, MIME/extension matching, signature checks, and configurable upload limits.
+- Replaced new APR1 password hashes with Argon2id and added transparent migration for existing credentials.
+- Added login session regeneration plus configurable reverse-proxy and secure-cookie support.
+- Updated the Docker runtime to Node.js 24 for built-in Argon2id support.
 
 ### v1.0.3
 
